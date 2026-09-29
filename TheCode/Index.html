@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Corball</title>
+    <link rel="stylesheet" href="Style.css">
+</head>
+<body>
+    <div id="main-menu">
+        <div class="menu-content" id="home-section">
+            <h1>CORBALL</h1>
+            <p>Version 1.4: XP System, Battle Pass, Boost Skins</p>
+            <p>Total Goals: <span id="goalDisplay">0</span></p>
+            
+            <button class="menu-btn" onclick="showModes()">PLAY</button>
+            <button class="menu-btn" onclick="showGarage()">GARAGE</button>
+            <div class="xp-bar-container">
+                <p>Level: <span id="levelDisplay">1</span></p>
+                <div class="xp-bg" style="background: #333; width: 200px; height: 10px; border-radius: 5px; margin: 10px auto;">
+                    <div id="xp-fill" style="background: #00d2ff; width: 0%; height: 100%; border-radius: 5px; transition: width 0.5s;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="menu-content" id="garage-selection" style="display: none;">
+            <h2>GARAGE</h2>
+        
+            <div class="garage-layout">
+                <div class="garage-view">
+                    <div id="showroom-container"></div>
+                </div>
+        
+                <div class="garage-controls">
+                    <div class="customizer-box">
+                        <label>BODY PAINT</label>
+                        <input type="color" id="carColorPicker" value="#00d2ff" onchange="updateCarColor(this.value)">
+                    </div>
+        
+                    <div class="customizer-box">
+                        <h3>HATS</h3>
+                        <div id="inventory-hats" class="button-grid">
+                            <button class="menu-btn small" onclick="equipHat('none')">None</button>
+                        </div>
+                        
+                        <h3>DECALS</h3>
+                        <div id="inventory-decals" class="button-grid">
+                            <button class="menu-btn small" onclick="equipDecal('none')">None</button>
+                        </div>
+                        <h3>BOOSTS</h3>
+                        <div id="inventory-boosts" class="button-grid">
+                            <button class="menu-btn small" onclick="equipBoost('standard_orange')">Classic</button>
+                        </div>
+                        <h3>GOAL EXPLOSION</h3>
+                        <div id="inventory-explosions" class="button-grid">
+                            <button class="menu-btn small" onclick="equipExplosion('Classic')">Classic</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="challenges-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3>DAILY CHALLENGES</h3>
+                    <span id="reset-timer" style="font-size: 0.7em; color: #ffaa00; font-family: monospace;">00:00:00</span>
+                </div>
+                <div id="challenge-list"></div>
+            </div>
+            <div class="battle-pass-container">
+                <h3>BATTLE PASS</h3>
+                <div id="battle-pass-track" class="bp-scroll">
+                    </div>
+            </div>
+        
+            <button class="back-btn" onclick="showHome()">← SAVE & EXIT</button>
+        </div>
+    
+        <div class="menu-content" id="mode-selection" style="display: none;">
+            <h2>SELECT GAME MODE</h2>
+            <button class="menu-btn" onclick="startGame('single')">PRACTICE (SOLO)</button>
+            
+            <button class="menu-btn" onclick="showAIMenu()">VS AI (BOTS) ▶</button>
+            
+            <button class="menu-btn" onclick="startGame('split')">SPLIT SCREEN (LOCAL)</button>
+            <button class="menu-btn" onclick="startGame('2v2_coop')">2V2 CO-OP (LOCAL)</button>
+            <button class="menu-btn locked" disabled>ONLINE (COMING SOON)</button>
+            
+            <button class="back-btn" onclick="showHome()">← BACK</button>
+        </div>
+        <div class="menu-content" id="ai-mode-selection" style="display: none;">
+            <h2>VS AI GAME MODES</h2>
+            <button class="menu-btn" onclick="startGame('ai')">1V1 VS. BOT</button>
+            <button class="menu-btn" onclick="startGame('hot_potato')">HOT POTATO (AI)</button>
+            
+            <button class="menu-btn" onclick="startGame('2v2_ai')">2V2 (AI)</button>
+            
+            <button class="back-btn" onclick="showModeSelection()">← BACK</button>
+            <p>Note - Bot algorithm is not adjusted to the new ball size</p>
+        </div>
+        
+    </div>
+    <div id="gui">
+        <div class="score">
+            <span class="blue-text">BLUE</span> 
+            <span id="s1">0</span> – <span id="s2">0</span> 
+            <span class="orange-text">ORANGE</span>
+        </div>
+        <div id="mission-toast" style="position: fixed; top: -100px; left: 50%; transform: translateX(-50%); background: linear-gradient(90deg, #800080, #ff00ff); color: white; padding: 15px 30px; border-radius: 50px; font-weight: bold; transition: 0.5s; z-index: 1000; border: 2px solid white; box-shadow: 0 0 20px rgba(255,0,255,0.5);">
+            CHALLENGE COMPLETE! +500 XP
+        </div>
+        <div class="dashboard">
+            <div class="stats-row">
+                <div class="boost-wrapper">
+                    <div class="label">BOOST</div>
+                    <div class="boost-container">
+                        <div id="boost-fill"></div>
+                    </div>
+                    <div class="xp-bggui" style="background: #333; width: 200px; height: 10px; border-radius: 5px; margin: 10px auto;">
+                        <div id="xp-fillgui" style="background: #00d2ff; width: 0%; height: 100%; border-radius: 5px; transition: width 0.5s;"></div>
+                    </div>
+                    <div class="label">Level: <span id="levelDisplaygui">1</span></div>
+                </div>
+                <div id="speed">0 MPH</div>
+            </div>
+            <div class="controls-hint-ingame">WASD: Drive | Space: Jump | Shift: Boost | r: Reset</div>
+        </div>
+    
+        <div id="p2-gui" class="p2-dashboard">
+            <div class="boost-wrapper">
+                <div class="label" style="text-align: right;">P2 BOOST</div>
+                <div class="boost-container">
+                    <div id="p2-boost-fill"></div>
+                </div>
+            </div>
+            <div class="controls-hint-ingame">Arrows / Shift / Slash</div>
+        </div>
+    
+        <div id="coordHud" style="
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #00ffff;
+            font-family: monospace;
+            font-size: 16px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 12px;
+            border-radius: 5px;
+            border: 1px solid #00ffff;
+            pointer-events: none;
+            z-index: 9999;
+            text-align: left;
+            line-height: 1.4;
+        ">
+            <b>📡 GPS POSITION:</b><br>
+            X: 0.00<br>
+            Y: 0.00<br>
+            Z: 0.00<br>
+            <span style="color: #ffaa00;">❌ SEEK CENTER</span>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="Script.js"></script>
+</body>
+</html>

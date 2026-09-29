@@ -1,0 +1,510 @@
+
+
+
+
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden; /* Stops the "article" scrolling */
+}
+
+canvas {
+    display: block;
+    position: fixed; /* Pins the game to the background */
+    top: 0;
+    left: 0;
+    z-index: 1;
+}
+#main-menu {
+    /* 1. This pins it to the screen over the game */
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;   /* Full Viewport Width */
+    height: 100vh;  /* Full Viewport Height */
+
+    /* 2. This centers the text and buttons */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start; /* Start from the top instead of centering */
+    align-items: center;
+    padding-top: 20px; 
+    overflow-y: auto; /* Safety net: allows scrolling the whole menu if on a tiny screen */
+
+    /* 3. The Styling with Custom Background Image */
+    /* Dark overlay mixed with your custom background URL */
+    background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), 
+                url("https://codehs.com/uploads/026a49b98af59b090d26692f7b19d6cf");
+    background-size: cover;       /* Stretches the image to fit the whole screen */
+    background-position: center;  /* Centers the background image */
+    background-repeat: no-repeat; /* Prevents the image from tiling */
+
+    backdrop-filter: blur(10px);
+    z-index: 9999; /* Higher than anything else */
+    color: white;
+    text-align: center;
+}
+
+.menu-content {
+    text-align: center;
+    animation: fadeIn 0.4s ease-out; /* Smooth entrance */
+}
+/* Garage Specific Styles */
+.customizer-box {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 30px;
+    border-radius: 15px;
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    margin-bottom: 20px;
+}
+.xp-bar-container {
+    margin: 15px 0;
+    text-align: center;
+}
+
+.xp-bg {
+    background: rgba(255, 255, 255, 0.1); /* Dark transparent background */
+    border: 1px solid #444;
+    width: 250px;
+    height: 12px;
+    margin: 5px auto;
+    border-radius: 10px;
+    overflow: hidden; /* Clips the fill bar to the corners */
+}
+
+#xp-fill {
+    background: linear-gradient(90deg, #00d2ff, #3a7bd5); /* Cool blue gradient */
+    height: 100%;
+    width: 0%;
+    transition: width 0.8s ease-out; /* Smooth sliding animation */
+}
+#carColorPicker {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 100px;
+    height: 100px;
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+    display: block;
+    margin: 0 auto 10px;
+}
+
+#carColorPicker::-webkit-color-swatch {
+    border-radius: 50%;
+    border: 3px solid #00ffff;
+    box-shadow: 0 0 15px #00ffff;
+}
+
+.customizer-box label {
+    display: block;
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: #00ffff;
+    margin-top: 10px;
+}
+
+/* Container for the 3D view and the Controls */
+.garage-layout {
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end; /* Align the main controls to the right */
+    align-items: flex-start;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-left: 260px; /* Add padding to push central content away from the left-side UI */
+    gap: 20px;
+    height: 50vh;
+}
+
+/* The 3D Car View */
+.garage-view {
+    flex: 2; /* Takes up more space */
+    height: 100%;
+    background: rgba(15,15, 15, 0.50);
+    border-radius: 15px;
+    position: relative;
+}
+
+/* The Inventory/Controls Box */
+.garage-controls {
+    flex: 1.2; /* Increased from 1 to 1.2 for more horizontal room */
+    background: rgba(15, 15, 15, 0.95); /* Slightly darker for contrast */
+    padding: 20px;
+    border-radius: 15px;
+    border: 1px solid #444;
+    height: 90%; /* Fill the height of garage-layout */
+    overflow-y: auto; 
+    text-align: left; /* Aligns headings and labels to the left */
+    margin-right: 160px;
+}
+
+/* Organize hat buttons into a tight grid - Improved */
+.button-grid {
+    display: grid;
+    /* This makes sure buttons don't overlap by giving them a fixed minimum size */
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); 
+    gap: 10px;
+    margin-bottom: 25px;
+    width: 100%;
+}
+
+/* Make buttons fit the grid properly */
+.menu-btn.small {
+    width: 100%; /* Fills the grid cell */
+    padding: 10px 5px;
+    font-size: 13px;
+    margin: 0; /* Remove the 'margin: 20px auto' from the global .menu-btn */
+    white-space: nowrap; /* Keeps text on one line */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Adds ... if name is too long */
+}
+/* Ensure the garage section ignores the parent's centering */
+#garage-selection {
+    width: 90vw; 
+    max-width: 1400px;
+}
+/* This is the parent container we positioned in the layout */
+#showroom-container {
+    position: absolute; /* Change from relative to absolute */
+    top: 30px;
+    left: 80px;
+    width: 450px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(0, 255, 255, 0.12) 0%, rgba(10, 10, 10, 0.95) 70%);
+    border-radius: 15px;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid rgba(0, 255, 255, 0.1); /* Subtle border to see the edge */
+}
+
+/* This targets the 3D canvas itself */
+#showroom-container canvas {
+    position: relative !important; /* Forces it to stay inside the div */
+    display: block;
+    width: 100% !important;  /* Match the container width */
+    height: 100% !important; /* Match the container height */
+    top: auto !important;
+    left: auto !important;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+#challenges-container {
+    position: absolute;
+    left: 20px;
+    top: 260px; /* Increased from 100px to push it below the showroom area */
+    width: 220px;
+    background: rgba(0, 0, 0, 0.75);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #555;
+    z-index: 10;
+    pointer-events: auto;
+}
+
+#challenges-container h3 {
+    margin: 0 0 8px 0;
+    font-size: 0.9em;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #ff00ff;
+}
+
+.challenge-card {
+    background: rgba(40, 40, 40, 0.9);
+    border-left: 3px solid #800080;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    font-size: 0.75em; /* Smaller text */
+}
+
+.challenge-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.xp-reward {
+    color: #00ff88;
+    font-weight: bold;
+}
+
+.progress-bar-bg {
+    background: #222;
+    height: 6px; /* Thinner bar */
+    border-radius: 3px;
+}
+.challenge-card.complete {
+    border-left: 3px solid #00ff88; /* Change purple to green */
+    background: rgba(0, 255, 136, 0.1); /* Subtle green tint */
+    opacity: 0.8;
+}
+
+.challenge-card.complete .progress-bar-fill {
+    background: #00ff88; /* Turn the bar green */
+}
+.progress-bar-fill {
+    background: linear-gradient(90deg, #800080, #ff00ff);
+    height: 100%; /* Must be 100% of the .progress-bar-bg height */
+    width: 0%;    /* Controlled by JS */
+    transition: width 0.3s ease;
+}
+.challenge-status {
+    font-size: 0.7em;
+    margin-top: 2px;
+    opacity: 0.8;
+}
+.battle-pass-container {
+    width: 95%; /* Slightly wider to use horizontal space */
+    max-width: 1200px;
+    margin: 10px auto 0; /* Reduced top margin from 20px to 10px */
+    background: linear-gradient(180deg, rgba(30,30,30,1) 0%, rgba(10,10,10,1) 100%);
+    padding: 8px 15px; /* Tighter vertical padding */
+    border-radius: 12px;
+    border: 1px solid #00d2ff55;
+}
+
+.battle-pass-container h3 {
+    font-size: 14px; /* Smaller header */
+    margin: 0 0 5px 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.bp-scroll {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    padding: 15px 5px;
+    overflow-x: auto; 
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    /* These two lines are the secret to the scroll */
+    flex-wrap: nowrap; 
+    width: 100%;
+}
+
+.bp-item {
+    flex: 0 0 120px; /* Shrunk width from 160px to 120px */
+    background: #222;
+    border: 2px solid #333;
+    border-radius: 8px;
+    padding: 8px; /* Tighter internal padding */
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    font-size: 12px; /* Smaller font for BP items */
+}
+/* Custom Scrollbar to make it look like a real game */
+.bp-scroll::-webkit-scrollbar {
+    height: 8px;
+}
+.bp-scroll::-webkit-scrollbar-track {
+    background: #111;
+    border-radius: 10px;
+}
+.bp-scroll::-webkit-scrollbar-thumb {
+    background: #00d2ff;
+    border-radius: 10px;
+}
+.bp-item.locked { opacity: 0.6; filter: grayscale(1); }
+.bp-item.unlocked { border-color: #00d2ff; background: #111; }
+
+.bp-level {
+    font-size: 10px;
+    color: #00d2ff;
+    font-weight: bold;
+}
+h1 {
+    font-size: 80px;
+    margin-bottom: 10px;
+    letter-spacing: 5px;
+    text-shadow: 0 0 20px #00ffff;
+}
+
+.menu-btn {
+    display: block;
+    width: 250px;
+    padding: 15px;
+    margin: 10px auto; /* Reduced from 20px */
+    background: rgba(10, 20, 30, 0.75);
+    border: 2px solid #00ffff;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    transition: 0.3s;
+    position: relative; /* Better for button behavior */
+}
+
+.menu-btn:hover {
+    background: #00ffff;
+    color: black;
+    box-shadow: 0 0 30px #00ffff;
+}
+/* Add this to your style.css */
+.locked {
+    border-color: #444 !important;
+    color: #666 !important;
+    cursor: not-allowed !important;
+}
+
+.back-btn {
+    display: inline-block;
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid #00ffff;
+    color: #00ffff;
+    padding: 8px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 10px; /* Reduced gap */
+    font-size: 14px;
+    transition: 0.2s;
+}
+
+.back-btn:hover {
+    background: #00ffff;
+    color: black;
+    text-decoration: none;
+}
+
+h2 {
+    font-size: 40px;
+    margin-bottom: 30px;
+    color: #00ffff;
+}
+/* This adds a subtle top border color depending on the item type */
+.bp-item {
+    border-top: 4px solid #444; /* Default */
+}
+
+/* We can use the text we added in the JS to style specific cards 
+   or add a data-attribute, but for now, let's just make the 
+   unlocked ones glow! */
+.bp-item.unlocked {
+    border-top-color: #00d2ff;
+    box-shadow: 0 4px 15px rgba(0, 210, 255, 0.2);
+}
+/* Team Colors */
+.blue-text { color: #00d2ff; text-shadow: 0 0 10px #0055ff; font-weight: bold; }
+.orange-text { color: #ff9900; text-shadow: 0 0 10px #ff4400; font-weight: bold; }
+/* Add these to style.css if you haven't already */
+.blue-text { 
+    color: #00d2ff; 
+    text-shadow: 0 0 10px #0055ff; 
+    font-weight: bold; 
+}
+
+.orange-text { 
+    color: #ff9900; 
+    text-shadow: 0 0 10px #ff4400; 
+    font-weight: bold; 
+}
+
+.score {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.6); /* Semi-transparent dark box */
+    padding: 10px 30px;
+    border-radius: 50px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 24px;
+    letter-spacing: 2px;
+}
+/* HUD Container */
+#gui {
+    display: none; /* Hidden until Start is clicked */
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 2000;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Dashboard Positioning */
+.dashboard {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.stats-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 40px;
+}
+
+/* Boost Bar Styling */
+.boost-wrapper { width: 180px; }
+.label { color: white; font-size: 10px; letter-spacing: 1px; margin-bottom: 4px; }
+.boost-container {
+    width: 100%;
+    height: 15px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 3px;
+    overflow: hidden;
+}
+#boost-fill {
+    width: 100%; /* Managed by JS */
+    height: 100%;
+    background: linear-gradient(90deg, #ff8800, #ffff00);
+    transition: width 0.1s ease-out;
+}
+
+/* Speedometer Styling */
+#speed {
+    color: white;
+    font-size: 42px;
+    font-weight: 900;
+    font-style: italic;
+    line-height: 1;
+}
+
+.controls-hint-ingame {
+    color: rgba(255,255,255,0.5);
+    font-size: 11px;
+}
+#split-line { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: white; z-index: 10; display: none; }
+/* --- PLAYER 2 HUD ADDITIONS --- */
+
+/* This container mirrors your existing .dashboard but pins to the bottom-right */
+.p2-dashboard {
+    position: absolute;
+    bottom: 40px;
+    right: 40px; /* Pinned to the right */
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end; /* Align text to the right */
+    gap: 10px;
+    display: none; /* Hidden by default */
+}
+
+/* Ensure the fill has a unique ID and a blue color scheme */
+#p2-boost-fill {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, #0088ff, #00ffff);
+    transition: width 0.1s ease-out;
+}
