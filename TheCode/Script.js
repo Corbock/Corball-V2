@@ -24,6 +24,154 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 let currentMode = 'practice';
+const LEADERBOARD_SUPABASE_URL = 'https://myidxrqdedounumsclwz.supabase.co';
+const LEADERBOARD_SUPABASE_ANON_KEY = 'sb_publishable_QWAcfCivd2NrKmyGp189qw_xNujc9aW';
+let leaderboardMetric = 'goals';
+let leaderboardSyncTimer;
+
+function getLeaderboardPlayerId() {
+    let playerId = localStorage.getItem('leaderboardPlayerId');
+    if (!playerId) {
+        playerId = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `player-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem('leaderboardPlayerId', playerId);
+    }
+    return playerId;
+}
+
+function getLeaderboardPlayerName() {
+    return localStorage.getItem('leaderboardPlayerName') || `Player ${getLeaderboardPlayerId().slice(0, 4)}`;
+}
+
+function setLeaderboardStatus(message) {
+    const status = document.getElementById('leaderboard-status');
+    if (status) status.textContent = message;
+}
+
+function setLeaderboardMetric(metric) {
+    leaderboardMetric = metric === 'level' ? 'level' : 'goals';
+    document.querySelectorAll('.leaderboard-tab').forEach((tab, index) => {
+        const isActive = index === (leaderboardMetric === 'goals' ? 0 : 1);
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-selected', String(isActive));
+    });
+    loadLeaderboard();
+}
+
+function renderLeaderboard(entries) {
+    const list = document.getElementById('leaderboard-list');
+    if (!list) return;
+    list.replaceChildren();
+
+    entries.forEach((entry, index) => {
+        const row = document.createElement('li');
+        row.className = 'leaderboard-entry';
+
+        const rank = document.createElement('span');
+        rank.className = 'leaderboard-rank';
+        rank.textContent = `${index + 1}.`;
+
+        const name = document.createElement('span');
+        name.className = 'leaderboard-player';
+        name.textContent = entry.display_name;
+
+        const value = document.createElement('span');
+        value.className = 'leaderboard-value';
+        value.textContent = leaderboardMetric === 'goals'
+            ? `${entry.total_goals} goals`
+            : `Lv. ${entry.battle_pass_level}`;
+
+        row.append(rank, name, value);
+        list.appendChild(row);
+    });
+}
+
+async function loadLeaderboard() {
+    if (!LEADERBOARD_SUPABASE_URL || !LEADERBOARD_SUPABASE_ANON_KEY) {
+        setLeaderboardStatus('Global rankings need a Supabase project. See README setup.');
+        return;
+    }
+
+    setLeaderboardStatus('Loading rankings...');
+    const orderBy = leaderboardMetric === 'goals' ? 'total_goals' : 'battle_pass_level';
+    const params = new URLSearchParams({
+        select: 'display_name,total_goals,battle_pass_level',
+        order: `${orderBy}.desc`,
+        limit: '10'
+    });
+
+    try {
+        const response = await fetch(`${LEADERBOARD_SUPABASE_URL}/rest/v1/corball_leaderboard?${params}`, {
+            headers: {
+                apikey: LEADERBOARD_SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${LEADERBOARD_SUPABASE_ANON_KEY}`
+            }
+        });
+        if (!response.ok) throw new Error(`Request failed (${response.status})`);
+        const entries = await response.json();
+        renderLeaderboard(entries);
+        setLeaderboardStatus(entries.length ? 'Top 10 players' : 'No scores yet. Be the first on the board.');
+    } catch (error) {
+        setLeaderboardStatus('Could not load rankings. Check the connection and Supabase setup.');
+    }
+}
+
+function saveLeaderboardName() {
+    const input = document.getElementById('leaderboard-name');
+    const playerName = input.value.trim().slice(0, 20);
+    if (!playerName) {
+        setLeaderboardStatus('Enter a player name first.');
+        return;
+    }
+    localStorage.setItem('leaderboardPlayerName', playerName);
+    scheduleLeaderboardSync();
+    setLeaderboardStatus('Name saved on this device.');
+}
+
+function scheduleLeaderboardSync() {
+    if (!LEADERBOARD_SUPABASE_URL || !LEADERBOARD_SUPABASE_ANON_KEY) return;
+    clearTimeout(leaderboardSyncTimer);
+    leaderboardSyncTimer = setTimeout(syncLeaderboardStats, 1000);
+}
+
+async function syncLeaderboardStats() {
+    const playerId = getLeaderboardPlayerId();
+    const payload = {
+        player_id: playerId,
+        display_name: getLeaderboardPlayerName(),
+        total_goals: Math.max(0, parseInt(localStorage.getItem('totalGoals')) || 0),
+        battle_pass_level: Math.max(1, parseInt(localStorage.getItem('playerLevel')) || 1),
+        updated_at: new Date().toISOString()
+    };
+
+    try {
+        const response = await fetch(`${LEADERBOARD_SUPABASE_URL}/rest/v1/corball_leaderboard?on_conflict=player_id`, {
+            method: 'POST',
+            headers: {
+                apikey: LEADERBOARD_SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${LEADERBOARD_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+                Prefer: 'resolution=merge-duplicates,return=minimal'
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(`Request failed (${response.status})`);
+        loadLeaderboard();
+    } catch (error) {
+        setLeaderboardStatus('Score sync failed. Your local progress is still saved.');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const nameInput = document.getElementById('leaderboard-name');
+    if (nameInput) nameInput.value = getLeaderboardPlayerName();
+    if (LEADERBOARD_SUPABASE_URL && LEADERBOARD_SUPABASE_ANON_KEY) {
+        syncLeaderboardStats();
+    } else {
+        loadLeaderboard();
+    }
+});
 
 // --- ALL CAR & BOT DECLARATIONS ---
 let p1Teammate = null; // Teammate Bot (Blue Team)
@@ -88,7 +236,7 @@ function showHome() {
     document.getElementById('mode-selection').style.display = 'none';
     document.getElementById('ai-mode-selection').style.display = 'none'; // <--- ADD THIS LINE
     document.getElementById('garage-selection').style.display = 'none';
-    document.getElementById('home-section').style.display = 'block';
+    document.getElementById('home-section').style.display = 'flex';
     refreshMenuStats();
     
     // Force the main car to match the selected color right now
@@ -2476,6 +2624,7 @@ function updateGoalStats() {
     let totalGoals = parseInt(localStorage.getItem('totalGoals')) || 0;
     totalGoals++;
     localStorage.setItem('totalGoals', totalGoals);
+    scheduleLeaderboardSync();
     
     console.log("Goal Scored! Total Career Goals: " + totalGoals);
     
@@ -2613,6 +2762,7 @@ function addXP(amount) {
 
     localStorage.setItem('playerXP', currentXP);
     localStorage.setItem('playerLevel', newLevel);
+    scheduleLeaderboardSync();
     
     refreshMenuStats(); // Keep the menu updated
 }

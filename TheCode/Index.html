@@ -7,19 +7,40 @@
 </head>
 <body>
     <div id="main-menu">
-        <div class="menu-content" id="home-section">
-            <h1>CORBALL</h1>
-            <p>Version 1.4: XP System, Battle Pass, Boost Skins</p>
-            <p>Total Goals: <span id="goalDisplay">0</span></p>
-            
-            <button class="menu-btn" onclick="showModes()">PLAY</button>
-            <button class="menu-btn" onclick="showGarage()">GARAGE</button>
-            <div class="xp-bar-container">
-                <p>Level: <span id="levelDisplay">1</span></p>
-                <div class="xp-bg" style="background: #333; width: 200px; height: 10px; border-radius: 5px; margin: 10px auto;">
-                    <div id="xp-fill" style="background: #00d2ff; width: 0%; height: 100%; border-radius: 5px; transition: width 0.5s;"></div>
+        <div id="home-section" class="home-layout">
+            <div class="menu-content home-content" id="home-content">
+                <h1>CORBALL</h1>
+                <p>Version 1.4: XP System, Battle Pass, Boost Skins</p>
+                <p>Total Goals: <span id="goalDisplay">0</span></p>
+
+                <button class="menu-btn" onclick="showModes()">PLAY</button>
+                <button class="menu-btn" onclick="showGarage()">GARAGE</button>
+                <div class="xp-bar-container">
+                    <p>Level: <span id="levelDisplay">1</span></p>
+                    <div class="xp-bg" style="background: #333; width: 200px; height: 10px; border-radius: 5px; margin: 10px auto;">
+                        <div id="xp-fill" style="background: #00d2ff; width: 0%; height: 100%; border-radius: 5px; transition: width 0.5s;"></div>
+                    </div>
                 </div>
             </div>
+            <aside id="leaderboard-panel" aria-labelledby="leaderboard-title">
+                <div class="leaderboard-heading">
+                    <h2 id="leaderboard-title">GLOBAL RANKINGS</h2>
+                    <button class="leaderboard-refresh" type="button" onclick="loadLeaderboard()">Refresh</button>
+                </div>
+                <div class="leaderboard-tabs" role="tablist" aria-label="Leaderboard category">
+                    <button class="leaderboard-tab active" type="button" role="tab" aria-selected="true" onclick="setLeaderboardMetric('goals')">GOALS</button>
+                    <button class="leaderboard-tab" type="button" role="tab" aria-selected="false" onclick="setLeaderboardMetric('level')">PASS LEVEL</button>
+                </div>
+                <div class="leaderboard-name-row">
+                    <label for="leaderboard-name">Player name</label>
+                    <div>
+                        <input id="leaderboard-name" type="text" maxlength="20" autocomplete="nickname" placeholder="Your name">
+                        <button class="leaderboard-save" type="button" onclick="saveLeaderboardName()">Save</button>
+                    </div>
+                </div>
+                <ol id="leaderboard-list" aria-live="polite"></ol>
+                <p id="leaderboard-status" role="status">Connecting...</p>
+            </aside>
         </div>
         
         <div class="menu-content" id="garage-selection" style="display: none;">

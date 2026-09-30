@@ -51,6 +51,127 @@ canvas {
     text-align: center;
     animation: fadeIn 0.4s ease-out; /* Smooth entrance */
 }
+.home-layout {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    width: 100%;
+    min-height: calc(100vh - 20px);
+}
+.home-content {
+    margin: 36px auto 0;
+}
+#leaderboard-panel {
+    position: absolute;
+    top: 72px;
+    left: clamp(16px, 3vw, 42px);
+    width: min(270px, 24vw);
+    padding: 14px;
+    color: #fff;
+    text-align: left;
+    background: rgba(8, 15, 22, 0.88);
+    border: 1px solid rgba(0, 210, 255, 0.48);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    z-index: 2;
+}
+.leaderboard-heading,
+.leaderboard-name-row > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.leaderboard-heading h2 {
+    margin: 0;
+    color: #00d2ff;
+    font-size: 15px;
+}
+.leaderboard-refresh,
+.leaderboard-save,
+.leaderboard-tab {
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+    background: #192a33;
+    border: 1px solid #44606b;
+    border-radius: 4px;
+}
+.leaderboard-refresh,
+.leaderboard-save {
+    padding: 6px 9px;
+}
+.leaderboard-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 12px 0;
+}
+.leaderboard-tab {
+    min-height: 34px;
+    font-size: 12px;
+}
+.leaderboard-tab.active {
+    color: #071117;
+    background: #00d2ff;
+    border-color: #00d2ff;
+}
+.leaderboard-name-row label {
+    display: block;
+    margin-bottom: 5px;
+    color: #b8c9ce;
+    font-size: 12px;
+}
+.leaderboard-name-row input {
+    min-width: 0;
+    width: 100%;
+    padding: 7px 8px;
+    color: #fff;
+    background: #101a20;
+    border: 1px solid #52646b;
+    border-radius: 4px;
+}
+#leaderboard-list {
+    display: grid;
+    gap: 5px;
+    min-height: 100px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: leaderboard-rank;
+}
+.leaderboard-entry {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    font-size: 13px;
+}
+.leaderboard-rank {
+    color: #00d2ff;
+    font-weight: 700;
+}
+.leaderboard-player {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.leaderboard-value {
+    color: #ffd166;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+}
+#leaderboard-status {
+    min-height: 2.5em;
+    margin: 10px 0 0;
+    color: #b8c9ce;
+    font-size: 12px;
+    line-height: 1.3;
+}
 /* Garage Specific Styles */
 .customizer-box {
     background: rgba(255, 255, 255, 0.05);
@@ -197,6 +318,24 @@ canvas {
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 760px) {
+    .home-layout {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+    .home-content {
+        order: 1;
+        margin-top: 20px;
+    }
+    #leaderboard-panel {
+        position: static;
+        order: 2;
+        width: min(92vw, 420px);
+        box-sizing: border-box;
+        margin: 0 auto 20px;
+    }
 }
 #challenges-container {
     position: absolute;
