@@ -46,8 +46,9 @@ function broadcast(room, message) {
 function endRoomMatch(room, score, reason) {
     if (room.ended) return;
     room.ended = true;
-    const winnerRole = score[0] === score[1] ? null : score[0] > score[1] ? 'p1' : 'p2';
-    broadcast(room, { type: 'match-end', score, winnerRole, reason });
+    const winnerTeam = score[0] === score[1] ? null : score[0] > score[1] ? 'blue' : 'orange';
+    const winnerRole = winnerTeam === 'blue' ? 'p1' : room.playerLimit === 2 ? 'p2' : 'p3';
+    broadcast(room, { type: 'match-end', score, winnerRole: winnerTeam ? winnerRole : null, winnerTeam, reason });
 }
 
 function createRoomCode() {
@@ -71,18 +72,24 @@ socketServer.on('connection', (socket) => {
             return;
         }
         if (message.type === 'create-room') {
+            const playerLimit = Number(message.playerLimit);
+            if (playerLimit !== 2 && playerLimit !== 4) {
+                socket.send(JSON.stringify({ type: 'error', message: 'Choose a room size of 2 or 4 players.', fatal: true }));
+                return;
+            }
             const code = createRoomCode();
-            const playerNames = { p1: normalizePlayerName(message.playerName), p2: null };
+            const playerNames = { p1: normalizePlayerName(message.playerName), p2: null, p3: null, p4: null };
             const room = new Map([[socket, 'p1']]);
             room.started = false;
             room.ended = false;
             room.settings = null;
             room.endsAt = 0;
+            room.playerLimit = playerLimit;
             room.playerNames = playerNames;
             rooms.set(code, room);
             sessions.set(socket, { room, code, role: 'p1' });
-            socket.send(JSON.stringify({ type: 'room-created', code, playerNames }));
-            socket.send(JSON.stringify({ type: 'role', role: 'p1', code, playerCount: 1, playerNames }));
+            socket.send(JSON.stringify({ type: 'room-created', code, playerNames, playerLimit }));
+            socket.send(JSON.stringify({ type: 'role', role: 'p1', code, playerCount: 1, playerLimit, playerNames }));
             return;
         }
         if (message.type === 'join-room') {
@@ -92,21 +99,22 @@ socketServer.on('connection', (socket) => {
                 socket.send(JSON.stringify({ type: 'error', message: 'Room not found.', fatal: true }));
                 return;
             }
-            if (room.size >= 2 || room.started) {
+            if (room.size >= room.playerLimit || room.started) {
                 socket.send(JSON.stringify({ type: 'error', message: 'That room is full.', fatal: true }));
                 return;
             }
-            room.playerNames.p2 = normalizePlayerName(message.playerName);
-            room.set(socket, 'p2');
-            sessions.set(socket, { room, code, role: 'p2' });
-            socket.send(JSON.stringify({ type: 'role', role: 'p2', code, playerCount: 2, playerNames: room.playerNames }));
-            broadcast(room, { type: 'player-count', playerCount: 2, playerNames: room.playerNames });
+            const role = ['p1', 'p2', 'p3', 'p4'].find(candidate => ![...room.values()].includes(candidate));
+            room.playerNames[role] = normalizePlayerName(message.playerName);
+            room.set(socket, role);
+            sessions.set(socket, { room, code, role });
+            socket.send(JSON.stringify({ type: 'role', role, code, playerCount: room.size, playerLimit: room.playerLimit, playerNames: room.playerNames }));
+            broadcast(room, { type: 'player-count', playerCount: room.size, playerLimit: room.playerLimit, playerNames: room.playerNames });
             return;
         }
         const session = sessions.get(socket);
         if (!session) return;
         if (message.type === 'hit') {
-            if (session.role === 'p2') {
+            if (session.role !== 'p1') {
                 for (const [client, role] of session.room) {
                     if (role === 'p1' && client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({
@@ -122,17 +130,22 @@ socketServer.on('connection', (socket) => {
             return;
         }
         if (message.type === 'start-match') {
-            if (session.role !== 'p1' || session.room.size !== 2 || session.room.started) return;
+            if (session.role !== 'p1' || session.room.size !== session.room.playerLimit || session.room.started) return;
+            const mode = message.settings?.mode;
             const rule = message.settings?.rule;
             const limit = Number(message.settings?.limit);
-            const maximum = rule === 'timer' ? 30 : rule === 'goals' ? 20 : 0;
+            const maximum = rule === 'timer' ? 30 : rule === 'goals' ? mode === 'hot_potato' ? 100 : 20 : 0;
+            if (mode !== 'normal' && mode !== 'hot_potato') {
+                socket.send(JSON.stringify({ type: 'error', message: 'Invalid game mode.' }));
+                return;
+            }
             if (!Number.isInteger(limit) || limit < 1 || limit > maximum) {
                 socket.send(JSON.stringify({ type: 'error', message: 'Invalid match settings.' }));
                 return;
             }
             session.room.started = true;
             session.room.ended = false;
-            session.room.settings = { rule, limit };
+            session.room.settings = { mode, rule, limit, playerLimit: session.room.playerLimit };
             session.room.endsAt = rule === 'timer' ? Date.now() + limit * 60000 : 0;
             broadcast(session.room, { type: 'match-start', settings: session.room.settings });
             return;
@@ -161,11 +174,12 @@ socketServer.on('connection', (socket) => {
                     playerRole: session.role,
                     player: message.player,
                     ball: message.ball,
+                    lastHitter: message.lastHitter,
                     score: message.score,
                     goalEvent: message.goalEvent,
                     resetSequence: message.resetSequence,
                     remainingSeconds: message.remainingSeconds,
-                    acknowledgedHitId: message.acknowledgedHitId
+                    acknowledgedHitIds: message.acknowledgedHitIds
                 }));
             }
         }
@@ -182,7 +196,7 @@ socketServer.on('connection', (socket) => {
             session.room.ended = false;
             session.room.settings = null;
             session.room.endsAt = 0;
-            broadcast(session.room, { type: 'player-count', playerCount: session.room.size, playerNames: session.room.playerNames });
+            broadcast(session.room, { type: 'player-count', playerCount: session.room.size, playerLimit: session.room.playerLimit, playerNames: session.room.playerNames });
         } else {
             rooms.delete(session.code);
         }

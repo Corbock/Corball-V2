@@ -121,9 +121,8 @@
             <h2>ONLINE MATCHES</h2>
             <p id="online-status" role="status">Host a room or join a friend's room.</p>
             <div id="online-lobby-players" style="display: none;">
-                <p>PLAYERS</p>
-                <div><span class="blue-text">BLUE:</span> <span id="online-blue-player-name">Waiting for host...</span></div>
-                <div><span class="orange-text">ORANGE:</span> <span id="online-orange-player-name">Waiting for player...</span></div>
+                <p id="online-lobby-count">PLAYERS</p>
+                <div id="online-lobby-player-list"></div>
             </div>
             <div id="online-room-code" style="display: none;">
                 <p>ROOM CODE</p>
@@ -131,6 +130,18 @@
             </div>
             <button id="online-host-room-button" class="menu-btn" type="button" onclick="hostOnlineRoom()">HOST A ROOM</button>
             <button id="online-join-room-button" class="menu-btn" type="button" onclick="showJoinRoomForm()">JOIN A ROOM</button>
+            <div id="online-host-setup">
+                <label for="online-player-limit">Players</label>
+                <select id="online-player-limit">
+                    <option value="2">2 players (1v1)</option>
+                    <option value="4">4 players (2v2)</option>
+                </select>
+                <label for="online-match-mode">Game mode</label>
+                <select id="online-match-mode" onchange="updateOnlineLimitLabel()">
+                    <option value="normal">Normal</option>
+                    <option value="hot_potato">Hot Potato</option>
+                </select>
+            </div>
             <div id="online-join-form" style="display: none;">
                 <label for="online-room-input">Enter room code</label>
                 <input id="online-room-input" type="text" maxlength="6" autocomplete="off" placeholder="ABC123">
