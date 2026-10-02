@@ -30,6 +30,7 @@ let onlineRole = null;
 let onlineStateTimer = 0;
 let onlineGameStarted = false;
 let onlineRoomCode = null;
+let onlinePlayerNames = { p1: null, p2: null };
 let onlineBallTarget = null;
 let onlineCars = null;
 const ONLINE_STATE_INTERVAL = 1000 / 60;
@@ -304,6 +305,19 @@ function hostOnlineRoom() {
     connectToOnlineRoom({ type: 'create-room' });
 }
 
+function updateOnlinePlayerNames(names = {}) {
+    if (names.p1 !== undefined) onlinePlayerNames.p1 = names.p1;
+    if (names.p2 !== undefined) onlinePlayerNames.p2 = names.p2;
+    document.getElementById('online-blue-player-name').textContent = onlinePlayerNames.p1 || 'Waiting for host...';
+    document.getElementById('online-orange-player-name').textContent = onlinePlayerNames.p2 || 'Waiting for player...';
+    document.getElementById('online-lobby-players').style.display = onlineRoomCode ? 'block' : 'none';
+}
+
+function updateOnlineScoreNames() {
+    document.getElementById('score-player-p1').textContent = onlinePlayerNames.p1 || 'BLUE';
+    document.getElementById('score-player-p2').textContent = onlinePlayerNames.p2 || 'ORANGE';
+}
+
 function showJoinRoomForm() {
     document.getElementById('online-join-form').style.display = 'block';
     document.getElementById('online-room-input').focus();
@@ -445,22 +459,26 @@ function connectToOnlineRoom(request) {
         return;
     }
 
-    onlineSocket.addEventListener('open', () => onlineSocket.send(JSON.stringify(request)));
+    const namedRequest = { ...request, playerName: getLeaderboardPlayerName() };
+    onlineSocket.addEventListener('open', () => onlineSocket.send(JSON.stringify(namedRequest)));
     onlineSocket.addEventListener('message', (event) => {
         const message = JSON.parse(event.data);
         if (message.type === 'role') {
             onlineRole = message.role;
             onlineRoomCode = message.code || onlineRoomCode;
+            updateOnlinePlayerNames(message.playerNames);
             document.getElementById('online-room-code').style.display = 'block';
             document.getElementById('online-room-code-value').textContent = onlineRoomCode;
             setOnlineStatus(`Room ${onlineRoomCode}: ${message.playerCount}/2 players online.`);
             updateOnlineLobbyUI(message.playerCount);
         } else if (message.type === 'room-created') {
             onlineRoomCode = message.code;
+            updateOnlinePlayerNames(message.playerNames);
             document.getElementById('online-room-code').style.display = 'block';
             document.getElementById('online-room-code-value').textContent = message.code;
             setOnlineStatus(`Room ${message.code} created. Waiting for player 2...`);
         } else if (message.type === 'player-count') {
+            updateOnlinePlayerNames(message.playerNames);
             setOnlineStatus(`Room ${onlineRoomCode}: ${message.playerCount}/2 players online.`);
             updateOnlineLobbyUI(message.playerCount);
         } else if (message.type === 'match-start') {
@@ -554,6 +572,7 @@ function stopOnlineGame() {
     onlineRole = null;
     onlineGameStarted = false;
     onlineRoomCode = null;
+    onlinePlayerNames = { p1: null, p2: null };
     onlineBallTarget = null;
     onlinePendingHitId = null;
     onlineHitSequence = 0;
@@ -571,10 +590,12 @@ function stopOnlineGame() {
     onlineWinnerRewarded = false;
     restoreDefaultPlayerCar();
     document.getElementById('online-room-code').style.display = 'none';
+    document.getElementById('online-lobby-players').style.display = 'none';
     document.getElementById('online-join-form').style.display = 'none';
     document.getElementById('online-match-result').style.display = 'none';
     document.getElementById('online-match-hud').style.display = 'none';
     updateOnlineLobbyUI(0);
+    updateOnlineScoreNames();
     gameRunning = false;
     document.getElementById('gui').style.display = 'none';
     document.getElementById('main-menu').style.display = 'flex';
@@ -586,7 +607,9 @@ function getOnlineCarState(car, velocity) {
         position: { x: car.position.x, y: car.position.y, z: car.position.z },
         rotation: { x: car.rotation.x, y: car.rotation.y, z: car.rotation.z },
         velocity: { x: velocity.x, y: velocity.y, z: velocity.z },
-        cosmetics: getOnlineCosmetics()
+        cosmetics: getOnlineCosmetics(),
+        isBoosting: keys['ShiftLeft'] && boostAmount > 0,
+        boostType: currentBoostType
     } : null;
 }
 
@@ -597,6 +620,8 @@ function applyOnlineState(message) {
         remotePlayer.car.position.set(remote.position.x, remote.position.y, remote.position.z);
         remotePlayer.car.rotation.set(remote.rotation.x, remote.rotation.y, remote.rotation.z);
         remotePlayer.velocity.set(remote.velocity.x, remote.velocity.y, remote.velocity.z);
+        remotePlayer.isBoosting = remote.isBoosting === true;
+        remotePlayer.boostType = boostTextures[remote.boostType] ? remote.boostType : 'standard_orange';
         const cosmeticsSignature = JSON.stringify(remote.cosmetics);
         if (remote.cosmetics && cosmeticsSignature !== remotePlayer.cosmeticsSignature) {
             applyOnlineCosmetics(remotePlayer.car, remote.cosmetics);
@@ -814,6 +839,7 @@ function animateGarage() {
 function startGame(mode) {
     currentMode = mode;
     gameRunning = true;
+    updateOnlineScoreNames();
     
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -988,7 +1014,6 @@ function startGame(mode) {
     if (camera2) camera2.updateProjectionMatrix();
 }
 
-let boostCooldown = 0; // Frames or time to wait before refilling
 let boostAmount = 100;
 let p1RotVel = 0; // Pitch velocity
 
@@ -1010,6 +1035,88 @@ const floor = new THREE.Mesh(
 
 floor.position.y = -0.5;
 scene.add(floor);
+
+const BOOST_PAD_RADIUS = 9;
+const BOOST_PAD_RECHARGE_PER_FRAME = 0.9;
+const BOOST_PAD_POSITIONS = [
+    { x: -170, z: -95, playerRole: 'p1', lastParticleTime: 0 },
+    { x: 170, z: -95, playerRole: 'p2', lastParticleTime: 0 },
+    { x: -170, z: 95, playerRole: 'p1', lastParticleTime: 0 },
+    { x: 170, z: 95, playerRole: 'p2', lastParticleTime: 0 }
+];
+
+BOOST_PAD_POSITIONS.forEach((pad) => {
+    const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(7.5, 7.5, 0.3, 32),
+        new THREE.MeshStandardMaterial({
+            color: 0x24d9d0,
+            emissive: 0x087a78,
+            emissiveIntensity: 1.4,
+            metalness: 0.45,
+            roughness: 0.3
+        })
+    );
+    base.position.set(pad.x, 0.18, pad.z);
+    scene.add(base);
+    pad.base = base;
+
+    const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(8.5, 0.65, 8, 32),
+        new THREE.MeshBasicMaterial({ color: 0x8ffff5 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(pad.x, 0.4, pad.z);
+    scene.add(ring);
+    pad.ring = ring;
+});
+
+function updateBoostPadEffects(timestamp) {
+    BOOST_PAD_POSITIONS.forEach((pad) => {
+        const car = currentMode === 'online'
+            ? onlineCars?.[pad.playerRole]?.car
+            : pad.playerRole === 'p1' ? p1 : p2;
+        const bodyColor = car?.getObjectByName('bodyMesh')?.material?.color;
+        const padColor = bodyColor || new THREE.Color(pad.playerRole === 'p1' ? p1SelectedColor : '#ff9900');
+        pad.base.material.color.copy(padColor);
+        pad.base.material.emissive.copy(padColor).multiplyScalar(0.35);
+        pad.ring.material.color.copy(padColor);
+
+        if (timestamp - pad.lastParticleTime < 160) return;
+        pad.lastParticleTime = timestamp;
+        const boostType = currentMode === 'online' && pad.playerRole !== onlineRole
+            ? onlineCars?.[pad.playerRole]?.boostType || 'standard_orange'
+            : currentBoostType;
+        const position = new THREE.Vector3(pad.x, 1.2, pad.z);
+
+        for (let index = 0; index < 2; index++) {
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = new THREE.Vector3(
+                Math.cos(angle) * 0.12,
+                0.04 + Math.random() * 0.1,
+                Math.sin(angle) * 0.12
+            );
+            createBoostParticle(position, false, scene, boostType, velocity);
+        }
+    });
+}
+
+function updateBoostPadRecharge(playerId, car) {
+    if (!car) return;
+    const pad = car.position.y <= 3.5
+        ? BOOST_PAD_POSITIONS.find((candidate) => {
+            const xDistance = car.position.x - candidate.x;
+            const zDistance = car.position.z - candidate.z;
+            return xDistance * xDistance + zDistance * zDistance <= BOOST_PAD_RADIUS * BOOST_PAD_RADIUS;
+        })
+        : null;
+    if (!pad) return;
+
+    if (playerId === 'p1') {
+        boostAmount = Math.min(100, boostAmount + BOOST_PAD_RECHARGE_PER_FRAME);
+    } else {
+        p2BoostAmount = Math.min(100, p2BoostAmount + BOOST_PAD_RECHARGE_PER_FRAME);
+    }
+}
 
 const underTexture = loader.load('https://codehs.com/uploads/3f6d453cc26b5df3c9634d50175b82e1'); 
 const floorUnder = new THREE.Mesh(
@@ -2124,12 +2231,12 @@ const boostTextures = {
     void_black: textureLoader.load('https://codehs.com/uploads/472aecbdbec7b0bb6a64e02d951e7f06'),
     ghost_white: textureLoader.load('https://codehs.com/uploads/0bab0704422e29307d576c4ee9588e35')
 };
-function createBoostParticle(carPosition, isShowroom = false, targetScene = scene) {
+function createBoostParticle(carPosition, isShowroom = false, targetScene = scene, boostType = currentBoostType, emissionVelocity = null) {
     // 1. Use a flat plane instead of a sphere
     const geometry = new THREE.PlaneGeometry(3.5, 3.5); 
     
     // 2. Grab the texture based on the equipped boost
-    const selectedTexture = boostTextures[currentBoostType] || boostTextures.standard_orange;
+    const selectedTexture = boostTextures[boostType] || boostTextures.standard_orange;
 
     const material = new THREE.MeshBasicMaterial({ 
         map: selectedTexture,
@@ -2173,16 +2280,13 @@ function createBoostParticle(carPosition, isShowroom = false, targetScene = scen
         // Standard game logic (shooting backwards relative to world if car is simple)
         direction.set(0, 0, 0.05); 
     }
-    particle.userData.velocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 0.1, 
-        (Math.random() - 0.5) * 0.1, 
-        isShowroom ? 0.4 : 0.05 
-    );
-    particle.userData.velocity = new THREE.Vector3(
-        direction.x + (Math.random() - 0.5) * 0.1,
-        direction.y + (Math.random() - 0.5) * 0.1,
-        direction.z + (Math.random() - 0.5) * 0.1
-    );
+    particle.userData.velocity = emissionVelocity
+        ? emissionVelocity.clone()
+        : new THREE.Vector3(
+            direction.x + (Math.random() - 0.5) * 0.1,
+            direction.y + (Math.random() - 0.5) * 0.1,
+            direction.z + (Math.random() - 0.5) * 0.1
+        );
     
     targetScene.add(particle);
 
@@ -3601,9 +3705,9 @@ function update() {
             boostFillP2.style.background = "linear-gradient(90deg, #0088ff, #00ffff)"; // Blue/Cyan for P2
         }
     }
-    let isBoosting = keys['ShiftLeft'];
+    let isBoostActive = keys['ShiftLeft'] && boostAmount > 0;
     let isDrifting = keys['KeyC']; // Using KeyC as requested
-    let driveSpeed = isBoosting ? 0.07 : 0.05;
+    let driveSpeed = isBoostActive ? 0.07 : 0.05;
     
     let steerPower = isDrifting ? 0.07 : 0.045;
     if (keys['KeyA']) p1.rotation.y += steerPower;
@@ -3972,15 +4076,14 @@ function update() {
     if (p2 && (currentMode === 'split' || currentMode === '2v2_coop')) {
         // --- 1. BOOST & SPEED LOGIC ---
         //if (keys['Numpad0'] || keys['Slash']) {
-        let p2IsBoosting = (keys['ShiftRight'] || keys['Numpad3']) && p2BoostAmount > 5;
+        let p2IsBoosting = (keys['ShiftRight'] || keys['Numpad3']) && p2BoostAmount > 0;
         let p2DriveSpeed = p2IsBoosting ? 0.15 : 0.1;
         let p2SteerPower = keys['ControlRight'] ? 0.07 : 0.045; // Using R-Ctrl for drift if needed
     
         if (p2IsBoosting) {
-            p2BoostAmount -= 0.8;
+            p2BoostAmount = Math.max(0, p2BoostAmount - 0.8);
             p2Juice.zoom = THREE.MathUtils.lerp(p2Juice.zoom, 5, 0.1);
         } else {
-            if (p2BoostAmount < 100) p2BoostAmount += 0.2;
             p2Juice.zoom = THREE.MathUtils.lerp(p2Juice.zoom, 0, 0.1);
         }
     
@@ -4098,25 +4201,8 @@ function update() {
         onlineBallTarget = null;
     }
 
-    let isBoostIntent = keys['ShiftLeft'] && boostAmount > 5;
-    let isBoostActive = isBoostIntent && boostCooldown <= 0;
-    
     if (isBoostActive) {
-        driveSpeed = 0.25; 
-        boostAmount -= 0.8; // Drains faster
-
-        if (boostAmount <= 0) {
-            boostAmount = 0;
-            boostCooldown = 120; // Wait 120 frames (approx 2 seconds) before refill
-        }
-    } else {
-        driveSpeed = 0.15;
-        if (boostCooldown > 0) {
-            boostCooldown--; // Count down the penalty
-        } else {
-            
-            if (boostAmount < 100) boostAmount += 0.2; 
-        }
+        boostAmount = Math.max(0, boostAmount - 0.8);
     }
     
     if (isBoostActive) {
@@ -4192,6 +4278,11 @@ function update() {
     }
     p1.position.x = Math.max(-198, Math.min(198, p1.position.x));
     p1.position.z = Math.max(-118, Math.min(118, p1.position.z));
+    updateBoostPadRecharge('p1', p1);
+    if (currentMode === 'split' || currentMode === '2v2_coop') {
+        updateBoostPadRecharge('p2', p2);
+    }
+    updateBoostPadEffects(performance.now());
     explosionParticles.forEach((p, index) => {
         // 1. Move the particle
         p.mesh.position.add(p.vel);
@@ -4397,7 +4488,7 @@ function update() {
             checkWinCondition();
         }
     }
-    if (keys['ShiftLeft']) { 
+    if (isBoostActive) {
         let addedTime = 0.016; 
         updateMissionProgress('boost', addedTime);
         boostLight.intensity = 2; boostLight.position.copy(p1.position); 
@@ -4410,6 +4501,20 @@ function update() {
         boostLight.intensity = 0;
         let normalFOV = (currentMode === 'split' || currentMode === '2v2_coop') ? 95 : 85;
         camera1.fov = THREE.MathUtils.lerp(camera1.fov, normalFOV, 0.1);
+    }
+    if (currentMode === 'online' && onlineCars && onlineRole) {
+        const remoteRole = onlineRole === 'p1' ? 'p2' : 'p1';
+        const remotePlayer = onlineCars[remoteRole];
+        if (remotePlayer?.isBoosting) {
+            const trailPosition = remotePlayer.car.position.clone();
+            const forward = new THREE.Vector3();
+            remotePlayer.car.getWorldDirection(forward);
+            trailPosition.addScaledVector(forward, -2.5);
+            trailPosition.y += 0.8;
+            for (let index = 0; index < 3; index++) {
+                createBoostParticle(trailPosition, false, scene, remotePlayer.boostType);
+            }
+        }
     }
     camera1.updateProjectionMatrix();
     

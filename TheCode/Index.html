@@ -10,7 +10,7 @@
         <div id="home-section" class="home-layout">
             <div class="menu-content home-content" id="home-content">
                 <h1>CORBALL</h1>
-                <p>Version 1.4: XP System, Battle Pass, Boost Skins</p>
+                <p>Version 2.0: ONLINE</p>
                 <p>Total Goals: <span id="goalDisplay">0</span></p>
 
                 <button class="menu-btn" onclick="showModes()">PLAY</button>
@@ -120,6 +120,11 @@
         <div class="menu-content" id="online-mode-selection" style="display: none;">
             <h2>ONLINE MATCHES</h2>
             <p id="online-status" role="status">Host a room or join a friend's room.</p>
+            <div id="online-lobby-players" style="display: none;">
+                <p>PLAYERS</p>
+                <div><span class="blue-text">BLUE:</span> <span id="online-blue-player-name">Waiting for host...</span></div>
+                <div><span class="orange-text">ORANGE:</span> <span id="online-orange-player-name">Waiting for player...</span></div>
+            </div>
             <div id="online-room-code" style="display: none;">
                 <p>ROOM CODE</p>
                 <strong id="online-room-code-value"></strong>
@@ -148,9 +153,9 @@
     </div>
     <div id="gui">
         <div class="score">
-            <span class="blue-text">BLUE</span> 
+            <span id="score-player-p1" class="blue-text">BLUE</span>
             <span id="s1">0</span> – <span id="s2">0</span> 
-            <span class="orange-text">ORANGE</span>
+            <span id="score-player-p2" class="orange-text">ORANGE</span>
         </div>
         <div id="online-match-hud" style="display: none; position: fixed; top: 16px; right: 16px; z-index: 10001; align-items: center; gap: 12px; padding: 10px 14px; color: white; background: rgba(0, 0, 0, 0.78); border: 1px solid #00d2ff; border-radius: 6px;">
             <span id="online-match-clock">GOALS TO WIN: 5</span>

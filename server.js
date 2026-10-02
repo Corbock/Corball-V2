@@ -58,6 +58,10 @@ function createRoomCode() {
     return code;
 }
 
+function normalizePlayerName(name) {
+    return String(name || '').trim().slice(0, 20) || 'Player';
+}
+
 socketServer.on('connection', (socket) => {
     socket.on('message', (rawMessage) => {
         let message;
@@ -68,15 +72,17 @@ socketServer.on('connection', (socket) => {
         }
         if (message.type === 'create-room') {
             const code = createRoomCode();
+            const playerNames = { p1: normalizePlayerName(message.playerName), p2: null };
             const room = new Map([[socket, 'p1']]);
             room.started = false;
             room.ended = false;
             room.settings = null;
             room.endsAt = 0;
+            room.playerNames = playerNames;
             rooms.set(code, room);
             sessions.set(socket, { room, code, role: 'p1' });
-            socket.send(JSON.stringify({ type: 'room-created', code }));
-            socket.send(JSON.stringify({ type: 'role', role: 'p1', code, playerCount: 1 }));
+            socket.send(JSON.stringify({ type: 'room-created', code, playerNames }));
+            socket.send(JSON.stringify({ type: 'role', role: 'p1', code, playerCount: 1, playerNames }));
             return;
         }
         if (message.type === 'join-room') {
@@ -90,10 +96,11 @@ socketServer.on('connection', (socket) => {
                 socket.send(JSON.stringify({ type: 'error', message: 'That room is full.', fatal: true }));
                 return;
             }
+            room.playerNames.p2 = normalizePlayerName(message.playerName);
             room.set(socket, 'p2');
             sessions.set(socket, { room, code, role: 'p2' });
-            socket.send(JSON.stringify({ type: 'role', role: 'p2', code, playerCount: 2 }));
-            broadcast(room, { type: 'player-count', playerCount: 2 });
+            socket.send(JSON.stringify({ type: 'role', role: 'p2', code, playerCount: 2, playerNames: room.playerNames }));
+            broadcast(room, { type: 'player-count', playerCount: 2, playerNames: room.playerNames });
             return;
         }
         const session = sessions.get(socket);
@@ -169,12 +176,13 @@ socketServer.on('connection', (socket) => {
         if (!session) return;
         session.room.delete(socket);
         sessions.delete(socket);
+        session.room.playerNames[session.role] = null;
         if (session.room.size) {
             session.room.started = false;
             session.room.ended = false;
             session.room.settings = null;
             session.room.endsAt = 0;
-            broadcast(session.room, { type: 'player-count', playerCount: session.room.size });
+            broadcast(session.room, { type: 'player-count', playerCount: session.room.size, playerNames: session.room.playerNames });
         } else {
             rooms.delete(session.code);
         }
