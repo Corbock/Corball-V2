@@ -49,6 +49,7 @@ let onlineEndRequestPending = false;
 let onlineWinnerRewarded = false;
 const LEADERBOARD_SUPABASE_URL = 'https://myidxrqdedounumsclwz.supabase.co';
 const LEADERBOARD_SUPABASE_ANON_KEY = 'sb_publishable_QWAcfCivd2NrKmyGp189qw_xNujc9aW';
+const ONLINE_SERVER_URL = 'wss://obscure-palm-tree-wv5jxrvrp54gh557x-8000.app.github.dev';
 let leaderboardMetric = 'goals';
 let leaderboardSyncTimer;
 
@@ -433,8 +434,11 @@ function connectToOnlineRoom(request) {
     setOnlineStatus(request.type === 'create-room' ? 'Creating room...' : 'Joining room...');
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const host = window.location.host || 'localhost:8000';
+    const serverUrl = window.location.hostname === 'corbock.github.io'
+        ? ONLINE_SERVER_URL
+        : `${protocol}://${host}`;
     try {
-        onlineSocket = new WebSocket(`${protocol}://${host}`);
+        onlineSocket = new WebSocket(serverUrl);
     } catch (error) {
         onlineSocket = null;
         setOnlineStatus('Could not open the connection. Use http://localhost:8000.');
