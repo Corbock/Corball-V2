@@ -102,7 +102,7 @@
             
             <button class="menu-btn" onclick="startGame('split')">SPLIT SCREEN (LOCAL)</button>
             <button class="menu-btn" onclick="startGame('2v2_coop')">2V2 CO-OP (LOCAL)</button>
-            <button class="menu-btn locked" disabled>ONLINE (COMING SOON)</button>
+            <button class="menu-btn" onclick="showOnlineMenu()">ONLINE MATCH</button>
             
             <button class="back-btn" onclick="showHome()">← BACK</button>
         </div>
@@ -116,6 +116,34 @@
             <button class="back-btn" onclick="showModeSelection()">← BACK</button>
             <p>Note - Bot algorithm is not adjusted to the new ball size</p>
         </div>
+
+        <div class="menu-content" id="online-mode-selection" style="display: none;">
+            <h2>ONLINE MATCHES</h2>
+            <p id="online-status" role="status">Host a room or join a friend's room.</p>
+            <div id="online-room-code" style="display: none;">
+                <p>ROOM CODE</p>
+                <strong id="online-room-code-value"></strong>
+            </div>
+            <button id="online-host-room-button" class="menu-btn" type="button" onclick="hostOnlineRoom()">HOST A ROOM</button>
+            <button id="online-join-room-button" class="menu-btn" type="button" onclick="showJoinRoomForm()">JOIN A ROOM</button>
+            <div id="online-join-form" style="display: none;">
+                <label for="online-room-input">Enter room code</label>
+                <input id="online-room-input" type="text" maxlength="6" autocomplete="off" placeholder="ABC123">
+                <button class="menu-btn" type="button" onclick="joinOnlineRoom()">JOIN ROOM</button>
+            </div>
+            <div id="online-host-controls" style="display: none;">
+                <label for="online-match-rule">Match ends by</label>
+                <select id="online-match-rule" onchange="updateOnlineLimitLabel()">
+                    <option value="goals">Goal limit</option>
+                    <option value="timer">Time limit</option>
+                </select>
+                <label id="online-match-limit-label" for="online-match-limit">Goals to win</label>
+                <input id="online-match-limit" type="number" min="1" max="20" value="5">
+                <button id="online-start-button" class="menu-btn" type="button" onclick="hostStartOnlineMatch()" disabled>START MATCH</button>
+            </div>
+            <p id="online-guest-waiting" style="display: none;">Waiting for the host to choose settings and start.</p>
+            <button class="back-btn" onclick="showModeSelection()">← BACK TO GAME MODES</button>
+        </div>
         
     </div>
     <div id="gui">
@@ -123,6 +151,15 @@
             <span class="blue-text">BLUE</span> 
             <span id="s1">0</span> – <span id="s2">0</span> 
             <span class="orange-text">ORANGE</span>
+        </div>
+        <div id="online-match-hud" style="display: none; position: fixed; top: 16px; right: 16px; z-index: 10001; align-items: center; gap: 12px; padding: 10px 14px; color: white; background: rgba(0, 0, 0, 0.78); border: 1px solid #00d2ff; border-radius: 6px;">
+            <span id="online-match-clock">GOALS TO WIN: 5</span>
+            <button id="online-end-button" class="menu-btn" type="button" onclick="hostEndOnlineMatch()" style="width: auto; margin: 0; padding: 8px 12px; display: none;">END MATCH</button>
+        </div>
+        <div id="online-match-result" style="display: none; position: fixed; inset: 0; z-index: 10002; align-items: center; justify-content: center; flex-direction: column; gap: 14px; color: white; background: rgba(0, 0, 0, 0.78);">
+            <h2 id="online-match-result-title">MATCH OVER</h2>
+            <p id="online-match-result-score"></p>
+            <div id="online-leaving-status" role="status" style="padding: 12px 20px; color: white; background: rgba(0, 210, 255, 0.16); border: 1px solid #00d2ff; border-radius: 6px;">Leaving match in 5 seconds...</div>
         </div>
         <div id="mission-toast" style="position: fixed; top: -100px; left: 50%; transform: translateX(-50%); background: linear-gradient(90deg, #800080, #ff00ff); color: white; padding: 15px 30px; border-radius: 50px; font-weight: bold; transition: 0.5s; z-index: 1000; border: 2px solid white; box-shadow: 0 0 20px rgba(255,0,255,0.5);">
             CHALLENGE COMPLETE! +500 XP

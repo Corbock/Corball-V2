@@ -2,7 +2,8 @@ let p1SelectedColor = localStorage.getItem('savedP1Color') || "#00d2ff";
 let gameRunning = false; // The game starts "paused" at the menu
 let time = 0;
 const scene = new THREE.Scene();
-const p1 = createCar("blue", "lightblue");
+let p1 = createCar("blue", "lightblue");
+const defaultPlayerCar = p1;
 let copLightState = 0; // 0 = all off, 1 = red on, 2 = blue on
 let lastCopFlashTime = 0;
 const flashInterval = 150; // Milliseconds between flashes (smaller is faster)
@@ -24,6 +25,28 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 let currentMode = 'practice';
+let onlineSocket = null;
+let onlineRole = null;
+let onlineStateTimer = 0;
+let onlineGameStarted = false;
+let onlineRoomCode = null;
+let onlineBallTarget = null;
+let onlineCars = null;
+const ONLINE_STATE_INTERVAL = 1000 / 60;
+let onlinePendingHitId = null;
+let onlineHitSequence = 0;
+let onlineLastAcknowledgedHitId = 0;
+let onlineGoalEvent = null;
+let onlineGoalSequence = 0;
+let onlineLastGoalSequence = 0;
+let onlineResetSequence = 0;
+let onlineLastResetSequence = 0;
+let onlineMatchSettings = null;
+let onlineMatchEndsAt = 0;
+let onlineMatchRemainingSeconds = 0;
+let onlineMatchEnded = false;
+let onlineEndRequestPending = false;
+let onlineWinnerRewarded = false;
 const LEADERBOARD_SUPABASE_URL = 'https://myidxrqdedounumsclwz.supabase.co';
 const LEADERBOARD_SUPABASE_ANON_KEY = 'sb_publishable_QWAcfCivd2NrKmyGp189qw_xNujc9aW';
 let leaderboardMetric = 'goals';
@@ -235,6 +258,7 @@ function showGarage() {
 function showHome() {
     document.getElementById('mode-selection').style.display = 'none';
     document.getElementById('ai-mode-selection').style.display = 'none'; // <--- ADD THIS LINE
+    document.getElementById('online-mode-selection').style.display = 'none';
     document.getElementById('garage-selection').style.display = 'none';
     document.getElementById('home-section').style.display = 'flex';
     refreshMenuStats();
@@ -248,17 +272,436 @@ function showHome() {
 function showModes() {
     document.getElementById('home-section').style.display = 'none';
     document.getElementById('ai-mode-selection').style.display = 'none'; // Ensure AI sub-menu is hidden
+    document.getElementById('online-mode-selection').style.display = 'none';
     document.getElementById('mode-selection').style.display = 'block';
 }
 // --- NEW SUB-MENU TOGGLE FUNCTIONS ---
 function showAIMenu() {
     document.getElementById('mode-selection').style.display = 'none';
+    document.getElementById('online-mode-selection').style.display = 'none';
     document.getElementById('ai-mode-selection').style.display = 'block';
 }
 
 function showModeSelection() {
     document.getElementById('ai-mode-selection').style.display = 'none';
+    document.getElementById('online-mode-selection').style.display = 'none';
     document.getElementById('mode-selection').style.display = 'block';
+}
+
+function showOnlineMenu() {
+    document.getElementById('mode-selection').style.display = 'none';
+    document.getElementById('ai-mode-selection').style.display = 'none';
+    document.getElementById('online-mode-selection').style.display = 'block';
+}
+
+function setOnlineStatus(message) {
+    const status = document.getElementById('online-status');
+    if (status) status.textContent = message;
+}
+
+function hostOnlineRoom() {
+    connectToOnlineRoom({ type: 'create-room' });
+}
+
+function showJoinRoomForm() {
+    document.getElementById('online-join-form').style.display = 'block';
+    document.getElementById('online-room-input').focus();
+}
+
+function joinOnlineRoom() {
+    const input = document.getElementById('online-room-input');
+    const code = input.value.trim().toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(code)) {
+        setOnlineStatus('Enter the six-character room code.');
+        input.focus();
+        return;
+    }
+    connectToOnlineRoom({ type: 'join-room', code });
+}
+
+function updateOnlineLobbyUI(playerCount = 0) {
+    const isHost = onlineRole === 'p1';
+    const isGuest = onlineRole === 'p2';
+    document.getElementById('online-host-controls').style.display = isHost ? 'block' : 'none';
+    document.getElementById('online-guest-waiting').style.display = isGuest ? 'block' : 'none';
+    document.getElementById('online-host-room-button').style.display = onlineRole ? 'none' : '';
+    document.getElementById('online-join-room-button').style.display = onlineRole ? 'none' : '';
+    document.getElementById('online-join-form').style.display = isGuest ? 'none' : document.getElementById('online-join-form').style.display;
+    document.getElementById('online-start-button').disabled = !isHost || playerCount < 2;
+}
+
+function updateOnlineLimitLabel() {
+    const rule = document.getElementById('online-match-rule').value;
+    const limit = document.getElementById('online-match-limit');
+    document.getElementById('online-match-limit-label').textContent = rule === 'timer' ? 'Minutes' : 'Goals to win';
+    limit.max = rule === 'timer' ? '30' : '20';
+    limit.value = rule === 'timer' ? '5' : '5';
+}
+
+function hostStartOnlineMatch() {
+    if (onlineRole !== 'p1' || !onlineSocket || onlineSocket.readyState !== WebSocket.OPEN) return;
+    const rule = document.getElementById('online-match-rule').value;
+    const limit = Number(document.getElementById('online-match-limit').value);
+    const maximum = rule === 'timer' ? 30 : 20;
+    if (!Number.isInteger(limit) || limit < 1 || limit > maximum) {
+        setOnlineStatus(`Choose a ${rule === 'timer' ? 'time' : 'goal'} limit from 1 to ${maximum}.`);
+        return;
+    }
+    document.getElementById('online-start-button').disabled = true;
+    setOnlineStatus('Starting match...');
+    onlineSocket.send(JSON.stringify({ type: 'start-match', settings: { rule, limit } }));
+}
+
+function getOnlineWinnerRole() {
+    if (score[0] === score[1]) return null;
+    return score[0] > score[1] ? 'p1' : 'p2';
+}
+
+function hostEndOnlineMatch() {
+    if (onlineRole !== 'p1' || onlineMatchEnded || onlineEndRequestPending) return;
+    if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN) return;
+    onlineEndRequestPending = true;
+    onlineSocket.send(JSON.stringify({
+        type: 'end-match',
+        winnerRole: getOnlineWinnerRole(),
+        score
+    }));
+}
+
+function handleOnlineMatchEnd(message) {
+    if (onlineMatchEnded) return;
+    onlineMatchEnded = true;
+    onlineEndRequestPending = false;
+    score = message.score || score;
+    document.getElementById('s1').textContent = score[0];
+    document.getElementById('s2').textContent = score[1];
+    gameRunning = false;
+    document.getElementById('online-end-button').style.display = 'none';
+    document.getElementById('online-match-hud').style.display = 'none';
+
+    const title = message.winnerRole === null
+        ? 'DRAW'
+        : message.winnerRole === onlineRole ? 'YOU WIN' : 'OPPONENT WINS';
+    document.getElementById('online-match-result-title').textContent = title;
+    document.getElementById('online-match-result-score').textContent = `${score[0]} - ${score[1]}`;
+    document.getElementById('online-match-result').style.display = 'flex';
+    let secondsUntilReload = 5;
+    const leavingStatus = document.getElementById('online-leaving-status');
+    leavingStatus.textContent = `Leaving match in ${secondsUntilReload}...`;
+    const countdownTimer = window.setInterval(() => {
+        secondsUntilReload--;
+        if (secondsUntilReload === 0) {
+            window.clearInterval(countdownTimer);
+            window.location.reload();
+            return;
+        }
+        leavingStatus.textContent = `Leaving match in ${secondsUntilReload}...`;
+    }, 1000);
+
+    if (message.winnerRole === onlineRole && !onlineWinnerRewarded) {
+        onlineWinnerRewarded = true;
+        addXP(1500);
+    }
+}
+
+function updateOnlineMatch() {
+    if (currentMode !== 'online' || !onlineMatchSettings || onlineMatchEnded) return;
+
+    if (onlineRole === 'p1') {
+        if (onlineMatchSettings.rule === 'timer') {
+            onlineMatchRemainingSeconds = Math.max(0, Math.ceil((onlineMatchEndsAt - Date.now()) / 1000));
+            if (onlineMatchRemainingSeconds === 0) {
+                hostEndOnlineMatch();
+            }
+        } else if (Math.max(score[0], score[1]) >= onlineMatchSettings.limit) {
+            hostEndOnlineMatch();
+        }
+    }
+
+    const clock = document.getElementById('online-match-clock');
+    if (onlineMatchSettings.rule === 'timer') {
+        const minutes = Math.floor(onlineMatchRemainingSeconds / 60);
+        const seconds = onlineMatchRemainingSeconds % 60;
+        clock.textContent = `${minutes}:${String(seconds).padStart(2, '0')}`;
+    } else {
+        clock.textContent = `FIRST TO ${onlineMatchSettings.limit}`;
+    }
+}
+
+function connectToOnlineRoom(request) {
+    if (onlineSocket && onlineSocket.readyState === WebSocket.OPEN) return;
+    setOnlineStatus(request.type === 'create-room' ? 'Creating room...' : 'Joining room...');
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const host = window.location.host || 'localhost:8000';
+    try {
+        onlineSocket = new WebSocket(`${protocol}://${host}`);
+    } catch (error) {
+        onlineSocket = null;
+        setOnlineStatus('Could not open the connection. Use http://localhost:8000.');
+        return;
+    }
+
+    onlineSocket.addEventListener('open', () => onlineSocket.send(JSON.stringify(request)));
+    onlineSocket.addEventListener('message', (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === 'role') {
+            onlineRole = message.role;
+            onlineRoomCode = message.code || onlineRoomCode;
+            document.getElementById('online-room-code').style.display = 'block';
+            document.getElementById('online-room-code-value').textContent = onlineRoomCode;
+            setOnlineStatus(`Room ${onlineRoomCode}: ${message.playerCount}/2 players online.`);
+            updateOnlineLobbyUI(message.playerCount);
+        } else if (message.type === 'room-created') {
+            onlineRoomCode = message.code;
+            document.getElementById('online-room-code').style.display = 'block';
+            document.getElementById('online-room-code-value').textContent = message.code;
+            setOnlineStatus(`Room ${message.code} created. Waiting for player 2...`);
+        } else if (message.type === 'player-count') {
+            setOnlineStatus(`Room ${onlineRoomCode}: ${message.playerCount}/2 players online.`);
+            updateOnlineLobbyUI(message.playerCount);
+        } else if (message.type === 'match-start') {
+            launchOnlineMatch(message.settings);
+        } else if (message.type === 'match-end') {
+            handleOnlineMatchEnd(message);
+        } else if (message.type === 'state') {
+            applyOnlineState(message);
+        } else if (message.type === 'hit') {
+            handleOnlineHit(message);
+        } else if (message.type === 'error') {
+            setOnlineStatus(message.message);
+            if (onlineRole === 'p1' && !message.fatal) updateOnlineLobbyUI(2);
+            if (message.fatal) stopOnlineGame();
+        }
+    });
+    onlineSocket.addEventListener('close', () => setOnlineStatus('Disconnected from lobby.'));
+    onlineSocket.addEventListener('error', () => setOnlineStatus('Could not connect to the online lobby.'));
+}
+
+window.hostOnlineRoom = hostOnlineRoom;
+window.showJoinRoomForm = showJoinRoomForm;
+window.joinOnlineRoom = joinOnlineRoom;
+window.updateOnlineLimitLabel = updateOnlineLimitLabel;
+window.hostStartOnlineMatch = hostStartOnlineMatch;
+window.hostEndOnlineMatch = hostEndOnlineMatch;
+
+function launchOnlineMatch(settings) {
+    if (onlineGameStarted) return;
+    onlineMatchSettings = settings;
+    onlineMatchEnded = false;
+    onlineEndRequestPending = false;
+    onlineWinnerRewarded = false;
+    onlineMatchEndsAt = settings.rule === 'timer' ? Date.now() + settings.limit * 60000 : 0;
+    onlineMatchRemainingSeconds = settings.rule === 'timer' ? settings.limit * 60 : 0;
+    score = [0, 0];
+    document.getElementById('s1').textContent = '0';
+    document.getElementById('s2').textContent = '0';
+    onlineGameStarted = true;
+    onlineBallTarget = null;
+    onlinePendingHitId = null;
+    onlineHitSequence = 0;
+    onlineLastAcknowledgedHitId = 0;
+    onlineGoalEvent = null;
+    onlineGoalSequence = 0;
+    onlineLastGoalSequence = 0;
+    onlineResetSequence = 0;
+    onlineLastResetSequence = 0;
+    startGame('online');
+}
+
+function setCarBodyColor(car, color) {
+    if (!car) return;
+    car.traverse((node) => {
+        if (node.isMesh && node.name === 'bodyMesh') node.material.color.set(color);
+    });
+}
+
+function getOnlineCosmetics() {
+    return {
+        bodyColor: localStorage.getItem('p1Color') || localStorage.getItem('savedP1Color') || p1SelectedColor,
+        hat: localStorage.getItem('p1Hat') || 'none',
+        decal: localStorage.getItem('p1Decal') || 'none'
+    };
+}
+
+function applyOnlineCosmetics(car, cosmetics) {
+    if (!car || !cosmetics) return;
+    setCarBodyColor(car, cosmetics.bodyColor);
+
+    const oldHat = car.getObjectByName('playerHat');
+    if (oldHat) car.remove(oldHat);
+    if (cosmetics.hat && cosmetics.hat !== 'none') {
+        const hat = createHat(cosmetics.hat);
+        hat.position.set(0, 2.5, -0.5);
+        car.add(hat);
+    }
+
+    const oldDecal = car.getObjectByName('playerDecal');
+    if (oldDecal) car.remove(oldDecal);
+    if (cosmetics.decal && cosmetics.decal !== 'none') {
+        const decal = createDecal(cosmetics.decal);
+        decal.position.set(0, 0.5, 0);
+        car.add(decal);
+    }
+}
+
+function stopOnlineGame() {
+    if (onlineSocket) onlineSocket.close();
+    onlineSocket = null;
+    onlineRole = null;
+    onlineGameStarted = false;
+    onlineRoomCode = null;
+    onlineBallTarget = null;
+    onlinePendingHitId = null;
+    onlineHitSequence = 0;
+    onlineLastAcknowledgedHitId = 0;
+    onlineGoalEvent = null;
+    onlineGoalSequence = 0;
+    onlineLastGoalSequence = 0;
+    onlineResetSequence = 0;
+    onlineLastResetSequence = 0;
+    onlineMatchSettings = null;
+    onlineMatchEndsAt = 0;
+    onlineMatchRemainingSeconds = 0;
+    onlineMatchEnded = false;
+    onlineEndRequestPending = false;
+    onlineWinnerRewarded = false;
+    restoreDefaultPlayerCar();
+    document.getElementById('online-room-code').style.display = 'none';
+    document.getElementById('online-join-form').style.display = 'none';
+    document.getElementById('online-match-result').style.display = 'none';
+    document.getElementById('online-match-hud').style.display = 'none';
+    updateOnlineLobbyUI(0);
+    gameRunning = false;
+    document.getElementById('gui').style.display = 'none';
+    document.getElementById('main-menu').style.display = 'flex';
+    showOnlineMenu();
+}
+
+function getOnlineCarState(car, velocity) {
+    return car ? {
+        position: { x: car.position.x, y: car.position.y, z: car.position.z },
+        rotation: { x: car.rotation.x, y: car.rotation.y, z: car.rotation.z },
+        velocity: { x: velocity.x, y: velocity.y, z: velocity.z },
+        cosmetics: getOnlineCosmetics()
+    } : null;
+}
+
+function applyOnlineState(message) {
+    const remote = message.player;
+    const remotePlayer = onlineCars && onlineCars[message.playerRole];
+    if (remote && remotePlayer && message.playerRole !== onlineRole) {
+        remotePlayer.car.position.set(remote.position.x, remote.position.y, remote.position.z);
+        remotePlayer.car.rotation.set(remote.rotation.x, remote.rotation.y, remote.rotation.z);
+        remotePlayer.velocity.set(remote.velocity.x, remote.velocity.y, remote.velocity.z);
+        const cosmeticsSignature = JSON.stringify(remote.cosmetics);
+        if (remote.cosmetics && cosmeticsSignature !== remotePlayer.cosmeticsSignature) {
+            applyOnlineCosmetics(remotePlayer.car, remote.cosmetics);
+            remotePlayer.cosmeticsSignature = cosmeticsSignature;
+        }
+    }
+    if (onlineRole === 'p2' && message.ball) {
+        if (onlinePendingHitId !== null && message.acknowledgedHitId === onlinePendingHitId) {
+            onlinePendingHitId = null;
+        }
+        if (onlinePendingHitId === null) {
+            onlineBallTarget = new THREE.Vector3(
+                message.ball.position.x,
+                message.ball.position.y,
+                message.ball.position.z
+            );
+            ballVel.set(message.ball.velocity.x, message.ball.velocity.y, message.ball.velocity.z);
+            ball.visible = message.ball.visible !== false;
+        }
+        if (message.score) {
+            score = message.score;
+            document.getElementById('s1').textContent = score[0];
+            document.getElementById('s2').textContent = score[1];
+        }
+    }
+    if (onlineRole === 'p2' && Number.isFinite(message.remainingSeconds)) {
+        onlineMatchRemainingSeconds = message.remainingSeconds;
+    }
+
+    if (onlineRole === 'p2' && message.goalEvent && message.goalEvent.id > onlineLastGoalSequence) {
+        const goalEvent = message.goalEvent;
+        onlineLastGoalSequence = goalEvent.id;
+        score = goalEvent.score;
+        document.getElementById('s1').textContent = score[0];
+        document.getElementById('s2').textContent = score[1];
+        if (goalEvent.scorerRole === onlineRole) addXP(100);
+        isGoalScored = true;
+        ballVel.set(0, 0, 0);
+        ball.visible = false;
+        createGoalExplosion(goalEvent.x, 0, goalEvent.color);
+        celebrate(goalEvent.text);
+    }
+
+    if (onlineRole === 'p2' && message.resetSequence > onlineLastResetSequence) {
+        onlineLastResetSequence = message.resetSequence;
+        setOnlineKickoffPositions();
+        ball.position.set(0, 5, 0);
+        ballVel.set(0, 0, 0);
+        ball.visible = true;
+        onlineBallTarget = null;
+        isGoalScored = false;
+    }
+}
+
+function recordOnlineGoal(text, x, color) {
+    if (currentMode !== 'online' || onlineRole !== 'p1') return;
+    onlineGoalEvent = {
+        id: ++onlineGoalSequence,
+        text,
+        x,
+        color,
+        scorerRole: lastHitter === 'p2' ? 'p2' : lastHitter === 'p1' ? 'p1' : null,
+        score: [...score]
+    };
+    if (onlineGoalEvent.scorerRole === onlineRole) addXP(100);
+}
+
+function handleOnlineHit(message) {
+    if (onlineRole !== 'p1' || message.playerRole !== 'p2' || !onlineCars || !Number.isSafeInteger(message.hitId)) return;
+    if (message.hitId <= onlineLastAcknowledgedHitId) return;
+
+    const remotePlayer = onlineCars.p2;
+    const remote = message.player;
+    if (remote) {
+        remotePlayer.car.position.set(remote.position.x, remote.position.y, remote.position.z);
+        remotePlayer.car.rotation.set(remote.rotation.x, remote.rotation.y, remote.rotation.z);
+        remotePlayer.velocity.set(remote.velocity.x, remote.velocity.y, remote.velocity.z);
+    }
+
+    const predictedBall = message.ball;
+    if (!predictedBall || !Number.isFinite(predictedBall.position?.x) || !Number.isFinite(predictedBall.position?.y) || !Number.isFinite(predictedBall.position?.z) || !Number.isFinite(predictedBall.velocity?.x) || !Number.isFinite(predictedBall.velocity?.y) || !Number.isFinite(predictedBall.velocity?.z)) return;
+    ball.position.set(predictedBall.position.x, predictedBall.position.y, predictedBall.position.z);
+    ballVel.set(predictedBall.velocity.x, predictedBall.velocity.y, predictedBall.velocity.z);
+    lastHitter = 'p2';
+    onlineLastAcknowledgedHitId = message.hitId;
+}
+
+function syncOnlineState(timestamp) {
+    if (currentMode !== 'online' || !onlineSocket || onlineSocket.readyState !== WebSocket.OPEN) return;
+    if (timestamp - onlineStateTimer < ONLINE_STATE_INTERVAL) return;
+    onlineStateTimer = timestamp;
+    onlineSocket.send(JSON.stringify({
+        type: 'state',
+        role: onlineRole,
+        playerRole: onlineRole,
+        player: getOnlineCarState(p1, p1Vel),
+        acknowledgedHitId: onlineRole === 'p1' ? onlineLastAcknowledgedHitId : null,
+        ball: onlineRole === 'p1' ? {
+            position: { x: ball.position.x, y: ball.position.y, z: ball.position.z },
+            velocity: { x: ballVel.x, y: ballVel.y, z: ballVel.z },
+            visible: ball.visible
+        } : null,
+        score: onlineRole === 'p1' ? score : null,
+        goalEvent: onlineRole === 'p1' ? onlineGoalEvent : null,
+        resetSequence: onlineRole === 'p1' ? onlineResetSequence : null,
+        remainingSeconds: onlineRole === 'p1' && onlineMatchSettings?.rule === 'timer'
+            ? onlineMatchRemainingSeconds
+            : null
+    }));
 }
 // Gold Color - 179, 155, 000
 // --- COLOR CUSTOMIZATION LOGIC ---
@@ -377,6 +820,10 @@ function startGame(mode) {
 
     document.getElementById('main-menu').style.display = 'none';
     document.getElementById('gui').style.display = 'block';
+    const onlineHud = document.getElementById('online-match-hud');
+    onlineHud.style.display = currentMode === 'online' ? 'flex' : 'none';
+    document.getElementById('online-end-button').style.display = currentMode === 'online' && onlineRole === 'p1' ? 'block' : 'none';
+    document.getElementById('online-match-result').style.display = 'none';
 
     const p2Hud = document.getElementById('p2-gui');
     const splitLine = document.getElementById('split-line');
@@ -395,7 +842,13 @@ function startGame(mode) {
     } else {
         currentBoostType = 'standard_orange'; // Default fallback
     }
-    if (currentMode === 'split') {
+    if (currentMode === 'online') {
+        configureOnlineCars();
+        setOnlineKickoffPositions();
+        camera1.fov = 85;
+        if (p2Hud) p2Hud.style.display = 'none';
+        if (splitLine) splitLine.style.display = 'none';
+    } else if (currentMode === 'split') {
     //if (p2 && (currentMode === 'split')) {
         // --- SPLIT SCREEN MODE ---
         initPlayer2();
@@ -603,11 +1056,72 @@ function initPlayer2() {
 
     p2 = createCar(bodyColor, accentColor); 
     p2.position.set(60, 1, 0);
-    p2.rotation.y = Math.PI;
+    p2.rotation.y = currentMode === 'split' ? Math.PI / 2 : Math.PI;
     p2.rotation.order = 'YXZ';
     p2SmoothQuat.copy(p2.quaternion); 
     
     scene.add(p2);
+}
+
+function configureOnlineCars() {
+    if (!onlineCars) {
+        onlineCars = {
+            p1: { car: createCar('blue', 'lightblue'), velocity: new THREE.Vector3(), juice: { zoom: 0, shake: 0, lean: 0 } },
+            p2: { car: createCar('orange', '#ffcc00'), velocity: new THREE.Vector3(), juice: { zoom: 0, shake: 0, lean: 0 } }
+        };
+    }
+
+    Object.values(onlineCars).forEach(player => {
+        player.car.rotation.order = 'YXZ';
+        scene.add(player.car);
+    });
+
+    const localPlayer = onlineCars[onlineRole];
+    const remoteRole = onlineRole === 'p1' ? 'p2' : 'p1';
+    const remotePlayer = onlineCars[remoteRole];
+    const localCosmetics = getOnlineCosmetics();
+    applyOnlineCosmetics(localPlayer.car, localCosmetics);
+    localPlayer.cosmeticsSignature = JSON.stringify(localCosmetics);
+    defaultPlayerCar.visible = false;
+
+    p1 = localPlayer.car;
+    p1Vel = localPlayer.velocity;
+    p1Juice = localPlayer.juice;
+    p1SmoothQuat.copy(p1.quaternion);
+    p2 = remotePlayer.car;
+    p2Vel = remotePlayer.velocity;
+    p2Juice = remotePlayer.juice;
+    p2SmoothQuat.copy(p2.quaternion);
+}
+
+function restoreDefaultPlayerCar() {
+    if (onlineCars) {
+        Object.values(onlineCars).forEach(player => {
+            scene.remove(player.car);
+            player.velocity.set(0, 0, 0);
+        });
+    }
+    defaultPlayerCar.visible = true;
+    p1 = defaultPlayerCar;
+    p1Vel = new THREE.Vector3();
+    p1Juice = { zoom: 0, shake: 0, lean: 0 };
+    p1SmoothQuat.copy(p1.quaternion);
+    p2 = null;
+    p2Vel = new THREE.Vector3();
+    p2Juice = { zoom: 0, shake: 0, lean: 0 };
+}
+
+function setOnlineKickoffPositions() {
+    const hostIsLocal = onlineRole === 'p1';
+    p1.position.set(hostIsLocal ? -60 : 60, 1, 0);
+    p1.rotation.y = hostIsLocal ? -Math.PI / 2.001 : Math.PI / 2;
+    p1Vel.set(0, 0, 0);
+    p1SmoothQuat.copy(p1.quaternion);
+
+    p2.position.set(hostIsLocal ? 60 : -60, 1, 0);
+    p2.rotation.y = hostIsLocal ? Math.PI / 2 : -Math.PI / 2.001;
+    p2Vel.set(0, 0, 0);
+    p2SmoothQuat.copy(p2.quaternion);
 }
 
 // --- UPGRADED 2V2 AI CONTROLLER WITH TACTICAL ROLES ---
@@ -2030,6 +2544,11 @@ createStadiumLight(200, -120);
 createStadiumLight(-200, -120);
 
 function fullReset() {
+    if (currentMode === 'online' && onlineRole === 'p1' && onlineGameStarted) {
+        onlineResetSequence++;
+        onlineGoalEvent = null;
+    }
+
     // 1. Reset Ball Physics & Appearance
     ball.position.set(0, 5, 0);
     ballVel.set(0, 0, 0);
@@ -2074,6 +2593,8 @@ function fullReset() {
             p3Vel.set(0, 0, 0);
         }
 
+    } else if (currentMode === 'online') {
+        setOnlineKickoffPositions();
     } else {
         // --- STANDARD 1V1 / SOLO KICKOFF POSITIONS ---
         
@@ -2087,7 +2608,7 @@ function fullReset() {
         if (p2) {
             p2.position.set(60, 1, 0);
             p2Vel.set(0, 0, 0);
-            p2.rotation.y = Math.PI; // Face toward center
+            p2.rotation.y = currentMode === 'split' ? Math.PI / 2 : Math.PI;
             p2SmoothQuat.copy(p2.quaternion);
         }
     }
@@ -2935,42 +3456,33 @@ function checkWinCondition() {
 }
 // --- 1. REUSABLE CAR-TO-BALL COLLISION ---
 function checkCarBallCollision(carMesh, carVel, hitterName) {
-    if (!carMesh || !carMesh.visible) return;
+    if (!carMesh || !carMesh.visible) return false;
 
-    // 1. Calculate local position of ball relative to the car
-    let localBallPos = carMesh.worldToLocal(ball.position.clone());
-    
-    let localDiffX = Math.abs(localBallPos.x);
-    let localDiffY = Math.abs(localBallPos.y);
-    let localDiffZ = Math.abs(localBallPos.z);
-    
-    // 2. Hitbox check (using your exact 6x7x5 bounds)
-    if (localDiffX < 6 && localDiffZ < 7 && localDiffY < 5) {
-        lastHitter = hitterName; // Tag who touched the ball last
-        
-        if (currentMode === 'hot_potato') {
-            ball.material.color.setHex(0xffaa00);
-            if (ball.material.emissive) {
-                ball.material.emissive.setHex(0xffaa00);
-            }
-        }
-        
-        let distance = carMesh.position.distanceTo(ball.position);
-        let hitDir = ball.position.clone().sub(carMesh.position).normalize();
-        
-        // 3. Impact math: uses car's velocity
-        let impactPower = (carVel.length() * 1.2) + 0.5; 
-        ballVel.add(hitDir.clone().multiplyScalar(impactPower));
-        ballVel.y += 0.2; // Upward pop
-        
-        // 4. Anti-clipping: Push ball out of the car body
-        let overlap = 8.1 - distance; 
-        if (overlap > 0) {
-            ball.position.add(hitDir.multiplyScalar(overlap));
-        }
-        
-        carVel.multiplyScalar(0.8); // Car slows down slightly
+    const localBallPos = carMesh.worldToLocal(ball.position.clone());
+    const localDiffX = Math.abs(localBallPos.x);
+    const localDiffY = Math.abs(localBallPos.y);
+    const localDiffZ = Math.abs(localBallPos.z);
+
+    if (localDiffX >= 6 || localDiffZ >= 7 || localDiffY >= 5) return false;
+
+    lastHitter = hitterName;
+
+    if (currentMode === 'hot_potato') {
+        ball.material.color.setHex(0xffaa00);
+        if (ball.material.emissive) ball.material.emissive.setHex(0xffaa00);
     }
+
+    const distance = carMesh.position.distanceTo(ball.position);
+    const hitDir = ball.position.clone().sub(carMesh.position).normalize();
+    const impactPower = (carVel.length() * 1.2) + 0.5;
+    ballVel.add(hitDir.clone().multiplyScalar(impactPower));
+    ballVel.y += 0.2;
+
+    const overlap = 8.1 - distance;
+    if (overlap > 0) ball.position.add(hitDir.multiplyScalar(overlap));
+
+    carVel.multiplyScalar(0.8);
+    return true;
 }
 
 // --- 2. REUSABLE CAR-TO-CAR COLLISION ---
@@ -3554,7 +4066,7 @@ function update() {
     
     
     
-    if (ball.position.y > 5) { 
+    if (ball.position.y > 5) {
         ballVel.y -= 0.03; // GRAVITY STRENGTH
     } else {
         ball.position.y = 5;
@@ -3563,14 +4075,24 @@ function update() {
         if (Math.abs(ballVel.y) > 0.1) ballVel.y *= -0.3;
         else ballVel.y = 0;
     }
-   
+
     if (ball.position.y > 5.1) {
         if (ballVel.y > 0) {
-            ballVel.y *= 0.96; 
+            ballVel.y *= 0.96;
         }
         ballVel.y -= 0.02; // Standard Gravity
     }
     ball.position.add(ballVel);
+
+    if (currentMode === 'online' && onlineRole === 'p2' && onlineBallTarget && onlinePendingHitId === null) {
+        const correction = onlineBallTarget.clone().sub(ball.position);
+        if (correction.length() > 15) {
+            ball.position.copy(onlineBallTarget);
+        } else {
+            ball.position.addScaledVector(correction, 0.2);
+        }
+        onlineBallTarget = null;
+    }
 
     let isBoostIntent = keys['ShiftLeft'] && boostAmount > 5;
     let isBoostActive = isBoostIntent && boostCooldown <= 0;
@@ -3578,7 +4100,7 @@ function update() {
     if (isBoostActive) {
         driveSpeed = 0.25; 
         boostAmount -= 0.8; // Drains faster
-        
+
         if (boostAmount <= 0) {
             boostAmount = 0;
             boostCooldown = 120; // Wait 120 frames (approx 2 seconds) before refill
@@ -3610,54 +4132,58 @@ function update() {
     
     // Ball - Car Collision
     
-    let localBallPos = p1.worldToLocal(ball.position.clone());
-    
-    let localDiffX = Math.abs(localBallPos.x);
-    let localDiffY = Math.abs(localBallPos.y); // Add this line!
-    let localDiffZ = Math.abs(localBallPos.z);
-    
-    if (localDiffX < 6.5 && localDiffZ < 7.5 && localDiffY < 5.5) {
-        lastHitPosition.copy(p1.position);
-        lastHitter = 'player'; // Tag as player
-        if (currentMode === 'hot_potato') {
-            ball.material.color.setHex(0x00cccc);    // Bright Neon Blue
-            if (ball.material.emissive) {
-                ball.material.emissive.setHex(0x00cccc); // Make it self-illuminate
+    if (currentMode !== 'online' || onlineRole === 'p1') {
+        let localBallPos = p1.worldToLocal(ball.position.clone());
+
+        let localDiffX = Math.abs(localBallPos.x);
+        let localDiffY = Math.abs(localBallPos.y); // Add this line!
+        let localDiffZ = Math.abs(localBallPos.z);
+
+        if (localDiffX < 6.5 && localDiffZ < 7.5 && localDiffY < 5.5) {
+            lastHitPosition.copy(p1.position);
+            lastHitter = 'player'; // Tag as player
+            if (currentMode === 'hot_potato') {
+                ball.material.color.setHex(0x00cccc);    // Bright Neon Blue
+                if (ball.material.emissive) {
+                    ball.material.emissive.setHex(0x00cccc); // Make it self-illuminate
+                }
             }
-        }
-        let distance = p1.position.distanceTo(ball.position);
-        let hitDir = ball.position.clone().sub(p1.position).normalize();
+            let distance = p1.position.distanceTo(ball.position);
+            let hitDir = ball.position.clone().sub(p1.position).normalize();
+
+            let impactPower = (p1Vel.length() * 1.3) + 0.6;
+            ballVel.add(hitDir.clone().multiplyScalar(impactPower));
+            ballVel.y += 0.2; // Give it a nice "pop" upward
         
-        let impactPower = (p1Vel.length() * 1.3) + 0.6; 
-        ballVel.add(hitDir.clone().multiplyScalar(impactPower));
-        ballVel.y += 0.2; // Give it a nice "pop" upward
-    
-        let overlap = 8.1 - distance; 
-        if (overlap > 0) {
-            ball.position.add(hitDir.multiplyScalar(overlap));
+            let overlap = 8.1 - distance;
+            if (overlap > 0) {
+                ball.position.add(hitDir.multiplyScalar(overlap));
+            }
+
+            p1Vel.multiplyScalar(0.8);
         }
-        
-        p1Vel.multiplyScalar(0.8);
     }
-    
-    // --- Ceiling Collision ---
-    const arenaHeight = 70; // Adjust this based on how high you want the "roof"
-    if (ball.position.y > arenaHeight) {
-        ball.position.y = arenaHeight;
-        ballVel.y *= -0.5; // Reflect velocity downward with some dampening (bounciness)
-    }
-    // --- Wall Collision ---
-    if (Math.abs(ball.position.z) > 115) {
-        ballVel.z *= -0.7;
-        ball.position.z = ball.position.z > 0 ? 115 : -115;
-    }
-    
-    if (Math.abs(ball.position.x) > 195) { 
-        if (Math.abs(ball.position.z) > 20) {
-            ballVel.x *= -0.7; 
-            ball.position.x = ball.position.x > 0 ? 195 : -195; 
-        } else if (Math.abs(ball.position.x) > 215) {
-            fullReset();
+
+    if (currentMode !== 'online' || onlineRole === 'p1') {
+        // --- Ceiling Collision ---
+        const arenaHeight = 70; // Adjust this based on how high you want the "roof"
+        if (ball.position.y > arenaHeight) {
+            ball.position.y = arenaHeight;
+            ballVel.y *= -0.5; // Reflect velocity downward with some dampening (bounciness)
+        }
+        // --- Wall Collision ---
+        if (Math.abs(ball.position.z) > 115) {
+            ballVel.z *= -0.7;
+            ball.position.z = ball.position.z > 0 ? 115 : -115;
+        }
+
+        if (Math.abs(ball.position.x) > 195) {
+            if (Math.abs(ball.position.z) > 20) {
+                ballVel.x *= -0.7;
+                ball.position.x = ball.position.x > 0 ? 195 : -195;
+            } else if (Math.abs(ball.position.x) > 215) {
+                fullReset();
+            }
         }
     }
     p1.position.x = Math.max(-198, Math.min(198, p1.position.x));
@@ -3686,22 +4212,39 @@ function update() {
     });
     
     // --- CENTRALIZED BALL COLLISIONS ---
-    // Player 1 ball hit (always active)
-    checkCarBallCollision(p1, p1Vel, 'p1');
-    
-    if (currentMode === '2v2_ai') {
-        checkCarBallCollision(p1Teammate, p1TeammateVel, 'p1Teammate');
-        checkCarBallCollision(p2, p2Vel, 'ai');
-        checkCarBallCollision(p3, p3Vel, 'ai');
-    } else if (currentMode === '2v2_coop') {
-        checkCarBallCollision(p2, p2Vel, 'p2'); // Human P2
-        checkCarBallCollision(p3, p3Vel, 'ai'); // Enemy Bot 1
-        checkCarBallCollision(p4, p4Vel, 'ai'); // Enemy Bot 2
-    } else if (p2 && (currentMode === 'split' || currentMode === 'ai' || currentMode === 'hot_potato')) {
-        checkCarBallCollision(p2, p2Vel, 'ai');
+    if (currentMode === 'online' && onlineRole === 'p2') {
+        if (onlinePendingHitId === null && onlineSocket && onlineSocket.readyState === WebSocket.OPEN) {
+            if (checkCarBallCollision(p1, p1Vel, 'p2')) {
+                onlinePendingHitId = ++onlineHitSequence;
+                onlineSocket.send(JSON.stringify({
+                    type: 'hit',
+                    playerRole: onlineRole,
+                    hitId: onlinePendingHitId,
+                    player: getOnlineCarState(p1, p1Vel),
+                    ball: {
+                        position: { x: ball.position.x, y: ball.position.y, z: ball.position.z },
+                        velocity: { x: ballVel.x, y: ballVel.y, z: ballVel.z }
+                    }
+                }));
+            }
+        }
+    } else {
+        checkCarBallCollision(p1, p1Vel, 'p1');
+
+        if (currentMode === 'online') {
+            // Guest hits are applied by the host when its hit event arrives.
+        } else if (currentMode === '2v2_ai') {
+            checkCarBallCollision(p1Teammate, p1TeammateVel, 'p1Teammate');
+            checkCarBallCollision(p2, p2Vel, 'ai');
+            checkCarBallCollision(p3, p3Vel, 'ai');
+        } else if (currentMode === '2v2_coop') {
+            checkCarBallCollision(p2, p2Vel, 'p2'); // Human P2
+            checkCarBallCollision(p3, p3Vel, 'ai'); // Enemy Bot 1
+            checkCarBallCollision(p4, p4Vel, 'ai'); // Enemy Bot 2
+        } else if (p2 && (currentMode === 'split' || currentMode === 'ai' || currentMode === 'hot_potato')) {
+            checkCarBallCollision(p2, p2Vel, 'ai');
+        }
     }
-    
-    
     // --- CENTRALIZED CAR-TO-CAR COLLISIONS ---
     if (currentMode === '2v2_ai' || currentMode === '2v2_coop') {
         // Select the correct set of 4 cars depending on the 2v2 mode
@@ -3726,12 +4269,12 @@ function update() {
                 );
             }
         }
-    } else if (p2 && (currentMode === 'split' || currentMode === 'ai' || currentMode === 'hot_potato')) {
+    } else if (p2 && (currentMode === 'split' || currentMode === 'ai' || currentMode === 'hot_potato' || currentMode === 'online')) {
         // Standard 1v1 bump handling
         checkCarToCarCollision(p1, p1Vel, p1Juice, p2, p2Vel, p2Juice);
     }
     
-    if (!isGoalScored) { // Only check if a goal isn't already being celebrated
+    if (!isGoalScored && (currentMode !== 'online' || onlineRole === 'p1')) {
         
         // ORANGE GOAL ZONE
         if (orangeGoalZone.containsPoint(ball.position)) { 
@@ -3769,6 +4312,7 @@ function update() {
             p1Juice.zoom = 5;  // Slight pull back
             p2Juice.zoom = 5;
             
+            recordOnlineGoal('BLUE SCORED!', 200, GOAL_COLORS.blue);
             createGoalExplosion(200, 0, GOAL_COLORS.blue);
             celebrate("BLUE SCORED!"); 
             ballVel.set(0, 0, 0); // Stop the ball movement
@@ -3776,7 +4320,7 @@ function update() {
             
             setTimeout(() => {
                 updateGoalStats();// Updates goal stats
-                addXP(100);
+                if (currentMode !== 'online') addXP(100);
                 fullReset();
                 isGoalScored = false; 
             }, 3000);
@@ -3814,6 +4358,7 @@ function update() {
             
             cameraTarget.set(-200, 5, 0)
             
+            recordOnlineGoal('ORANGE SCORED!', -200, GOAL_COLORS.orange);
             createGoalExplosion(-200, 0, GOAL_COLORS.orange);
             celebrate("ORANGE SCORED!"); 
             ballVel.set(0, 0, 0); // Stop the ball movement
@@ -3882,6 +4427,8 @@ function update() {
     
     updateParticles();
     
+    updateOnlineMatch();
+    syncOnlineState(performance.now());
     requestAnimationFrame(update);
     scene.children.forEach(child => {
         if (child.isParticle) { // You can add a property .isParticle = true to your particles
