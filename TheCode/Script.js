@@ -1054,7 +1054,7 @@ floor.position.y = -0.5;
 scene.add(floor);
 
 const BOOST_PAD_RADIUS = 9;
-const BOOST_PAD_RECHARGE_PER_FRAME = 0.9;
+const BOOST_PAD_RECHARGE_PER_FRAME = 2.0;
 const BOOST_PAD_POSITIONS = [
     { x: -170, z: -95, playerRole: 'p1', lastParticleTime: 0 },
     { x: 170, z: -95, playerRole: 'p2', lastParticleTime: 0 },
