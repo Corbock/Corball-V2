@@ -50,7 +50,7 @@ let onlineEndRequestPending = false;
 let onlineWinnerRewarded = false;
 const LEADERBOARD_SUPABASE_URL = 'https://myidxrqdedounumsclwz.supabase.co';
 const LEADERBOARD_SUPABASE_ANON_KEY = 'sb_publishable_QWAcfCivd2NrKmyGp189qw_xNujc9aW';
-const ONLINE_SERVER_URL = 'wss://obscure-palm-tree-wv5jxrvrp54gh557x-8000.app.github.dev';
+const ONLINE_SERVER_URL = 'wss://corball-v2-online.onrender.com';
 let leaderboardMetric = 'goals';
 let leaderboardSyncTimer;
 
@@ -459,6 +459,8 @@ function connectToOnlineRoom(request) {
         return;
     }
 
+    let fatalServerError = false;
+    let connectionError = false;
     const namedRequest = { ...request, playerName: getLeaderboardPlayerName() };
     onlineSocket.addEventListener('open', () => onlineSocket.send(JSON.stringify(namedRequest)));
     onlineSocket.addEventListener('message', (event) => {
@@ -492,11 +494,19 @@ function connectToOnlineRoom(request) {
         } else if (message.type === 'error') {
             setOnlineStatus(message.message);
             if (onlineRole === 'p1' && !message.fatal) updateOnlineLobbyUI(2);
-            if (message.fatal) stopOnlineGame();
+            if (message.fatal) {
+                fatalServerError = true;
+                stopOnlineGame();
+            }
         }
     });
-    onlineSocket.addEventListener('close', () => setOnlineStatus('Disconnected from lobby.'));
-    onlineSocket.addEventListener('error', () => setOnlineStatus('Could not connect to the online lobby.'));
+    onlineSocket.addEventListener('close', () => {
+        if (!fatalServerError && !connectionError) setOnlineStatus('Disconnected from lobby.');
+    });
+    onlineSocket.addEventListener('error', () => {
+        connectionError = true;
+        setOnlineStatus('Could not connect to the online lobby.');
+    });
 }
 
 window.hostOnlineRoom = hostOnlineRoom;
@@ -667,6 +677,7 @@ function applyOnlineState(message) {
 
     if (onlineRole === 'p2' && message.resetSequence > onlineLastResetSequence) {
         onlineLastResetSequence = message.resetSequence;
+        refillBoost();
         setOnlineKickoffPositions();
         ball.position.set(0, 5, 0);
         ballVel.set(0, 0, 0);
@@ -839,6 +850,7 @@ function animateGarage() {
 function startGame(mode) {
     currentMode = mode;
     gameRunning = true;
+    refillBoost();
     updateOnlineScoreNames();
     
     const width = window.innerWidth;
@@ -1016,6 +1028,11 @@ function startGame(mode) {
 
 let boostAmount = 100;
 let p1RotVel = 0; // Pitch velocity
+
+function refillBoost() {
+    boostAmount = 100;
+    p2BoostAmount = 100;
+}
 
 const light = new THREE.DirectionalLight(0xffffff, 1);
 light.position.set(10, 20, 10);
@@ -2652,6 +2669,7 @@ createStadiumLight(200, -120);
 createStadiumLight(-200, -120);
 
 function fullReset() {
+    refillBoost();
     if (currentMode === 'online' && onlineRole === 'p1' && onlineGameStarted) {
         onlineResetSequence++;
         onlineGoalEvent = null;
@@ -4376,6 +4394,7 @@ function update() {
             isGoalScored = true;
             score[0]++; 
             document.getElementById('s1').innerText = score[0]; 
+            if (currentMode === '2v2_ai') addXP(500);
             
             // --- LONG SHOT LOGIC START ---
             // 1. Get the center of the goal zone
@@ -4450,6 +4469,7 @@ function update() {
             isGoalScored = true;
             score[1]++; 
             document.getElementById('s2').innerText = score[1]; 
+            if (currentMode === '2v2_ai') addXP(500);
             
             cameraTarget.set(-200, 5, 0)
             

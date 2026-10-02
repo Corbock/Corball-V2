@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: corball-v2-online
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
