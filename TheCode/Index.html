@@ -22,14 +22,36 @@
                     </div>
                 </div>
             </div>
+            <aside id="rank-panel" aria-label="Current rank">
+                <p class="rank-label">RANK</p>
+                <div class="rank-emblem" id="rank-emblem" role="img" aria-label="Bronze rank shield">
+                    <svg viewBox="0 0 100 110" aria-hidden="true">
+                        <defs>
+                            <pattern id="rank-shield-texture" patternUnits="userSpaceOnUse" width="100" height="110">
+                                <image href="https://codehs.com/uploads/2a5fed409347f06bcc6bcfc782485fe1" width="100" height="110" preserveAspectRatio="xMidYMid slice"></image>
+                            </pattern>
+                        </defs>
+                        <path class="rank-shield-texture" d="M50 3 91 18v29c0 26-16 44-41 60C25 91 9 73 9 47V18z"></path>
+                        <path class="rank-shield" d="M50 3 91 18v29c0 26-16 44-41 60C25 91 9 73 9 47V18z"></path>
+                        <path class="rank-shield-mark" d="M50 15 81 26v21c0 19-11 33-31 47-20-14-31-28-31-47V26z"></path>
+                    </svg>
+                    <span id="rank-emblem-mark" aria-hidden="true">I</span>
+                </div>
+                <strong id="rank-name">Bronze I</strong>
+                <div class="rank-progress-track" aria-hidden="true">
+                    <div id="rank-progress-fill"></div>
+                </div>
+                <p id="rank-progress-label">0% to next rank</p>
+            </aside>
             <aside id="leaderboard-panel" aria-labelledby="leaderboard-title">
                 <div class="leaderboard-heading">
                     <h2 id="leaderboard-title">GLOBAL RANKINGS</h2>
                     <button class="leaderboard-refresh" type="button" onclick="loadLeaderboard()">Refresh</button>
                 </div>
                 <div class="leaderboard-tabs" role="tablist" aria-label="Leaderboard category">
-                    <button class="leaderboard-tab active" type="button" role="tab" aria-selected="true" onclick="setLeaderboardMetric('goals')">GOALS</button>
-                    <button class="leaderboard-tab" type="button" role="tab" aria-selected="false" onclick="setLeaderboardMetric('level')">PASS LEVEL</button>
+                    <button class="leaderboard-tab active" data-metric="goals" type="button" role="tab" aria-selected="true" onclick="setLeaderboardMetric('goals')">GOALS</button>
+                    <button class="leaderboard-tab" data-metric="level" type="button" role="tab" aria-selected="false" onclick="setLeaderboardMetric('level')">PASS LEVEL</button>
+                    <button class="leaderboard-tab" data-metric="ranked" type="button" role="tab" aria-selected="false" onclick="setLeaderboardMetric('ranked')">RANKED WINS</button>
                 </div>
                 <div class="leaderboard-name-row">
                     <label for="leaderboard-name">Player name</label>
@@ -120,6 +142,13 @@
         <div class="menu-content" id="online-mode-selection" style="display: none;">
             <h2>ONLINE MATCHES</h2>
             <p id="online-status" role="status">Host a room or join a friend's room.</p>
+            <button id="ranked-queue-button" class="menu-btn" type="button" onclick="joinRankedQueue()">RANKED</button>
+            <div id="ranked-queue-screen" style="display: none;">
+                <h3>RANKED MATCHMAKING</h3>
+                <p id="ranked-queue-status" role="status">Waiting for opponent...</p>
+                <button class="back-btn" type="button" onclick="cancelRankedQueue()">CANCEL</button>
+            </div>
+            <div id="online-standard-options">
             <div id="online-lobby-players" style="display: none;">
                 <p id="online-lobby-count">PLAYERS</p>
                 <div id="online-lobby-player-list"></div>
@@ -158,6 +187,7 @@
                 <button id="online-start-button" class="menu-btn" type="button" onclick="hostStartOnlineMatch()" disabled>START MATCH</button>
             </div>
             <p id="online-guest-waiting" style="display: none;">Waiting for the host to choose settings and start.</p>
+            </div>
             <button class="back-btn" onclick="showModeSelection()">← BACK TO GAME MODES</button>
         </div>
         
@@ -175,6 +205,7 @@
         <div id="online-match-result" style="display: none; position: fixed; inset: 0; z-index: 10002; align-items: center; justify-content: center; flex-direction: column; gap: 14px; color: white; background: rgba(0, 0, 0, 0.78);">
             <h2 id="online-match-result-title">MATCH OVER</h2>
             <p id="online-match-result-score"></p>
+            <p id="online-ranked-change" style="display: none;"></p>
             <div id="online-leaving-status" role="status" style="padding: 12px 20px; color: white; background: rgba(0, 210, 255, 0.16); border: 1px solid #00d2ff; border-radius: 6px;">Leaving match in 5 seconds...</div>
         </div>
         <div id="mission-toast" style="position: fixed; top: -100px; left: 50%; transform: translateX(-50%); background: linear-gradient(90deg, #800080, #ff00ff); color: white; padding: 15px 30px; border-radius: 50px; font-weight: bold; transition: 0.5s; z-index: 1000; border: 2px solid white; box-shadow: 0 0 20px rgba(255,0,255,0.5);">

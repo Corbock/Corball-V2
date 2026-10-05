@@ -50,9 +50,37 @@ let onlineMatchRemainingSeconds = 0;
 let onlineMatchEnded = false;
 let onlineEndRequestPending = false;
 let onlineWinnerRewarded = false;
+let onlineRankedWinRecorded = false;
+let onlineRankedQueueActive = false;
+let onlineExpectedClose = false;
 const LEADERBOARD_SUPABASE_URL = 'https://myidxrqdedounumsclwz.supabase.co';
 const LEADERBOARD_SUPABASE_ANON_KEY = 'sb_publishable_QWAcfCivd2NrKmyGp189qw_xNujc9aW';
 const ONLINE_SERVER_URL = 'wss://corball-v2-online.onrender.com';
+const RANK_DIVISIONS = [
+    { name: 'Bronze I', tier: 'Bronze', numeral: 'I' },
+    { name: 'Bronze II', tier: 'Bronze', numeral: 'II' },
+    { name: 'Bronze III', tier: 'Bronze', numeral: 'III' },
+    { name: 'Silver I', tier: 'Silver', numeral: 'I' },
+    { name: 'Silver II', tier: 'Silver', numeral: 'II' },
+    { name: 'Silver III', tier: 'Silver', numeral: 'III' },
+    { name: 'Gold I', tier: 'Gold', numeral: 'I' },
+    { name: 'Gold II', tier: 'Gold', numeral: 'II' },
+    { name: 'Gold III', tier: 'Gold', numeral: 'III' },
+    { name: 'Diamond I', tier: 'Diamond', numeral: 'I' },
+    { name: 'Diamond II', tier: 'Diamond', numeral: 'II' },
+    { name: 'Diamond III', tier: 'Diamond', numeral: 'III' },
+    { name: 'Real I', tier: 'Real', numeral: 'I' },
+    { name: 'Real II', tier: 'Real', numeral: 'II' },
+    { name: 'Real III', tier: 'Real', numeral: 'III' }
+];
+const RANK_COLORS = {
+    Bronze: '#b8733e',
+    Silver: '#aab8c3',
+    Gold: '#e2b63f',
+    Diamond: '#43c4dc',
+    Real: '#f16b83'
+};
+const MAX_RANK_POINTS = RANK_DIVISIONS.length * 100 - 1;
 let leaderboardMetric = 'goals';
 let leaderboardSyncTimer;
 
@@ -71,15 +99,109 @@ function getLeaderboardPlayerName() {
     return localStorage.getItem('leaderboardPlayerName') || `Player ${getLeaderboardPlayerId().slice(0, 4)}`;
 }
 
+function getRankedWins() {
+    const rankedWins = Number.parseInt(localStorage.getItem('rankedWins'), 10);
+    return Number.isSafeInteger(rankedWins) && rankedWins > 0 ? rankedWins : 0;
+}
+
+function getRankPoints() {
+    const rankPoints = Number.parseInt(localStorage.getItem('rankPoints'), 10);
+    return Number.isSafeInteger(rankPoints) ? Math.max(0, Math.min(MAX_RANK_POINTS, rankPoints)) : 0;
+}
+
+function getRankInfo(rankPoints = getRankPoints()) {
+    const tierIndex = Math.min(RANK_DIVISIONS.length - 1, Math.floor(rankPoints / 100));
+    return {
+        ...RANK_DIVISIONS[tierIndex],
+        tierIndex,
+        progress: rankPoints - tierIndex * 100,
+        points: rankPoints
+    };
+}
+
+function refreshRankUI() {
+    const panel = document.getElementById('rank-panel');
+    if (!panel) return;
+    const rank = getRankInfo();
+    const color = RANK_COLORS[rank.tier];
+    panel.style.setProperty('--rank-color', color);
+    panel.setAttribute('aria-label', `Current rank: ${rank.name}`);
+    document.getElementById('rank-emblem').setAttribute('aria-label', `${rank.name} shield`);
+    document.getElementById('rank-emblem-mark').textContent = rank.numeral;
+    document.getElementById('rank-name').textContent = rank.name;
+    document.getElementById('rank-progress-fill').style.width = `${rank.progress}%`;
+    document.getElementById('rank-progress-label').textContent = rank.tierIndex === RANK_DIVISIONS.length - 1
+        ? 'MAX RANK'
+        : `${rank.progress}% to next rank`;
+}
+
+function applyRankedResult(didWin, opponentRankTier) {
+    const rankBefore = getRankInfo();
+    const playerTier = Number.isInteger(onlineMatchSettings?.playerRankTier)
+        ? onlineMatchSettings.playerRankTier
+        : rankBefore.tierIndex;
+    const opponentTier = Number.isInteger(opponentRankTier)
+        ? Math.max(0, Math.min(RANK_DIVISIONS.length - 1, opponentRankTier))
+        : playerTier;
+    const tierGap = didWin
+        ? Math.max(0, opponentTier - playerTier)
+        : Math.max(0, playerTier - opponentTier);
+    const rankChange = didWin ? 25 + tierGap * 7 : -(5 + tierGap * 2);
+    const newRankPoints = Math.max(0, Math.min(MAX_RANK_POINTS, rankBefore.points + rankChange));
+    localStorage.setItem('rankPoints', newRankPoints);
+    scheduleLeaderboardSync();
+    refreshRankUI();
+
+    const rankAfter = getRankInfo(newRankPoints);
+    const changeLabel = rankAfter.tierIndex > rankBefore.tierIndex
+        ? `RANK UP: ${rankAfter.name}`
+        : rankAfter.tierIndex < rankBefore.tierIndex
+            ? `RANK DOWN: ${rankAfter.name}`
+            : `${didWin ? '+' : ''}${rankChange} points | ${rankAfter.name} (${rankAfter.progress}%)`;
+    return `${changeLabel} (${didWin ? '+' : ''}${rankChange})`;
+}
+
+async function loadRankedWins() {
+    const playerId = getLeaderboardPlayerId();
+    const params = new URLSearchParams({
+        select: 'ranked_wins',
+        player_id: `eq.${playerId}`,
+        limit: '1'
+    });
+
+    try {
+        const response = await fetch(`${LEADERBOARD_SUPABASE_URL}/rest/v1/corball_leaderboard?${params}`, {
+            headers: {
+                apikey: LEADERBOARD_SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${LEADERBOARD_SUPABASE_ANON_KEY}`
+            }
+        });
+        if (response.ok) {
+            const entries = await response.json();
+            if (entries.length && Number.isSafeInteger(entries[0].ranked_wins)) {
+                localStorage.setItem('rankedWins', entries[0].ranked_wins);
+                if (Number.isSafeInteger(entries[0].rank_points)) {
+                    localStorage.setItem('rankPoints', entries[0].rank_points);
+                }
+                refreshRankUI();
+                return entries[0].ranked_wins;
+            }
+        }
+    } catch (error) {
+        // Keep the locally saved count available if the leaderboard is offline.
+    }
+    return getRankedWins();
+}
+
 function setLeaderboardStatus(message) {
     const status = document.getElementById('leaderboard-status');
     if (status) status.textContent = message;
 }
 
 function setLeaderboardMetric(metric) {
-    leaderboardMetric = metric === 'level' ? 'level' : 'goals';
-    document.querySelectorAll('.leaderboard-tab').forEach((tab, index) => {
-        const isActive = index === (leaderboardMetric === 'goals' ? 0 : 1);
+    leaderboardMetric = ['goals', 'level', 'ranked'].includes(metric) ? metric : 'goals';
+    document.querySelectorAll('.leaderboard-tab').forEach((tab) => {
+        const isActive = tab.dataset.metric === leaderboardMetric;
         tab.classList.toggle('active', isActive);
         tab.setAttribute('aria-selected', String(isActive));
     });
@@ -107,7 +229,9 @@ function renderLeaderboard(entries) {
         value.className = 'leaderboard-value';
         value.textContent = leaderboardMetric === 'goals'
             ? `${entry.total_goals} goals`
-            : `Lv. ${entry.battle_pass_level}`;
+            : leaderboardMetric === 'ranked'
+                ? `${entry.ranked_wins} wins`
+                : `Lv. ${entry.battle_pass_level}`;
 
         row.append(rank, name, value);
         list.appendChild(row);
@@ -121,9 +245,11 @@ async function loadLeaderboard() {
     }
 
     setLeaderboardStatus('Loading rankings...');
-    const orderBy = leaderboardMetric === 'goals' ? 'total_goals' : 'battle_pass_level';
+    const orderBy = leaderboardMetric === 'goals'
+        ? 'total_goals'
+        : leaderboardMetric === 'ranked' ? 'ranked_wins' : 'battle_pass_level';
     const params = new URLSearchParams({
-        select: 'display_name,total_goals,battle_pass_level',
+        select: 'display_name,total_goals,battle_pass_level,ranked_wins',
         order: `${orderBy}.desc`,
         limit: '10'
     });
@@ -169,6 +295,8 @@ async function syncLeaderboardStats() {
         display_name: getLeaderboardPlayerName(),
         total_goals: Math.max(0, parseInt(localStorage.getItem('totalGoals')) || 0),
         battle_pass_level: Math.max(1, parseInt(localStorage.getItem('playerLevel')) || 1),
+        ranked_wins: getRankedWins(),
+        rank_points: getRankPoints(),
         updated_at: new Date().toISOString()
     };
 
@@ -190,14 +318,16 @@ async function syncLeaderboardStats() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const nameInput = document.getElementById('leaderboard-name');
     if (nameInput) nameInput.value = getLeaderboardPlayerName();
     if (LEADERBOARD_SUPABASE_URL && LEADERBOARD_SUPABASE_ANON_KEY) {
+        await loadRankedWins();
         syncLeaderboardStats();
     } else {
         loadLeaderboard();
     }
+    refreshRankUI();
 });
 
 // --- ALL CAR & BOT DECLARATIONS ---
@@ -247,6 +377,7 @@ function refreshMenuStats() {
     document.getElementById('levelDisplay').innerText = level;
     document.getElementById('xp-fillgui').style.width = progress + "%";
     document.getElementById('levelDisplaygui').innerText = level;
+    refreshRankUI();
 }
 function showGarage() {
     document.getElementById('home-section').style.display = 'none';
@@ -308,6 +439,41 @@ function hostOnlineRoom() {
     connectToOnlineRoom({ type: 'create-room', playerLimit });
 }
 
+async function joinRankedQueue() {
+    if (onlineSocket && onlineSocket.readyState === WebSocket.OPEN) return;
+    onlineRankedQueueActive = true;
+    document.getElementById('ranked-queue-button').style.display = 'none';
+    document.getElementById('online-standard-options').style.display = 'none';
+    document.getElementById('ranked-queue-screen').style.display = 'block';
+    document.getElementById('ranked-queue-status').textContent = 'Waiting for opponent...';
+    setOnlineStatus('Joining ranked matchmaking...');
+
+    const rankedWins = await loadRankedWins();
+    if (!onlineRankedQueueActive) return;
+    const rankPoints = getRankPoints();
+    connectToOnlineRoom({
+        type: 'find-ranked-match',
+        playerId: getLeaderboardPlayerId(),
+        rankedWins,
+        rankPoints
+    });
+}
+
+function cancelRankedQueue() {
+    onlineRankedQueueActive = false;
+    const queueSocket = onlineSocket;
+    if (queueSocket) {
+        onlineExpectedClose = true;
+        queueSocket.close();
+    }
+    onlineSocket = null;
+    onlineRole = null;
+    document.getElementById('ranked-queue-screen').style.display = 'none';
+    document.getElementById('ranked-queue-button').style.display = '';
+    document.getElementById('online-standard-options').style.display = 'block';
+    setOnlineStatus('Ranked queue cancelled.');
+}
+
 function updateOnlinePlayerNames(names = {}) {
     Object.keys(onlinePlayerNames).forEach(role => {
         if (names[role] !== undefined) onlinePlayerNames[role] = names[role];
@@ -326,13 +492,46 @@ function updateOnlinePlayerNames(names = {}) {
     document.getElementById('online-lobby-players').style.display = onlineRoomCode ? 'block' : 'none';
 }
 
+function createRankedScoreEmblem(rankTier) {
+    const division = RANK_DIVISIONS[Math.max(0, Math.min(RANK_DIVISIONS.length - 1, rankTier))];
+    const emblem = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    emblem.setAttribute('viewBox', '0 0 100 110');
+    emblem.setAttribute('aria-hidden', 'true');
+    emblem.classList.add('ranked-score-emblem');
+
+    const shield = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    shield.setAttribute('d', 'M50 3 91 18v29c0 26-16 44-41 60C25 91 9 73 9 47V18z');
+    shield.setAttribute('fill', RANK_COLORS[division.tier]);
+    shield.setAttribute('stroke', 'rgba(255,255,255,0.9)');
+    shield.setAttribute('stroke-width', '6');
+    emblem.appendChild(shield);
+    return emblem;
+}
+
 function updateOnlineScoreNames() {
     const blueRoles = onlineRoomPlayerLimit === 4 ? ['p1', 'p2'] : ['p1'];
     const orangeRoles = onlineRoomPlayerLimit === 4 ? ['p3', 'p4'] : ['p2'];
-    const blueNames = blueRoles.map(role => onlinePlayerNames[role]).filter(Boolean).join(' / ');
-    const orangeNames = orangeRoles.map(role => onlinePlayerNames[role]).filter(Boolean).join(' / ');
-    document.getElementById('score-player-p1').textContent = blueNames || 'BLUE';
-    document.getElementById('score-player-p2').textContent = orangeNames || 'ORANGE';
+    const isRankedMatch = currentMode === 'online' && onlineMatchSettings?.ranked;
+    const rankByRole = onlineRole === 'p1'
+        ? { p1: onlineMatchSettings?.playerRankTier, p2: onlineMatchSettings?.opponentRankTier }
+        : { p1: onlineMatchSettings?.opponentRankTier, p2: onlineMatchSettings?.playerRankTier };
+
+    const renderNames = (element, roles, fallback) => {
+        element.replaceChildren();
+        roles.forEach((role, index) => {
+            if (index > 0) element.append(document.createTextNode(' / '));
+            if (isRankedMatch && Number.isInteger(rankByRole[role])) {
+                element.appendChild(createRankedScoreEmblem(rankByRole[role]));
+            }
+            const name = document.createElement('span');
+            name.textContent = onlinePlayerNames[role] || fallback;
+            element.appendChild(name);
+        });
+        element.classList.toggle('ranked-score-names', Boolean(isRankedMatch));
+    };
+
+    renderNames(document.getElementById('score-player-p1'), blueRoles, 'BLUE');
+    renderNames(document.getElementById('score-player-p2'), orangeRoles, 'ORANGE');
 }
 
 function showJoinRoomForm() {
@@ -425,7 +624,7 @@ function getOnlineWinnerRole() {
 }
 
 function hostEndOnlineMatch() {
-    if (onlineRole !== 'p1' || onlineMatchEnded || onlineEndRequestPending) return;
+    if (onlineRole !== 'p1' || onlineMatchSettings?.ranked || onlineMatchEnded || onlineEndRequestPending) return;
     if (!onlineSocket || onlineSocket.readyState !== WebSocket.OPEN) return;
     onlineEndRequestPending = true;
     onlineSocket.send(JSON.stringify({
@@ -450,8 +649,18 @@ function handleOnlineMatchEnd(message) {
     const title = winnerTeam === null
         ? 'DRAW'
         : winnerTeam === getOnlineTeam(onlineRole) ? 'YOUR TEAM WINS' : 'OPPONENTS WIN';
+    const didWin = winnerTeam !== null && winnerTeam === getOnlineTeam(onlineRole);
     document.getElementById('online-match-result-title').textContent = title;
     document.getElementById('online-match-result-score').textContent = `${score[0]} - ${score[1]}`;
+    const rankedChange = document.getElementById('online-ranked-change');
+    if (onlineMatchSettings?.ranked) {
+        rankedChange.textContent = winnerTeam === null
+            ? `NO RANK CHANGE | ${getRankInfo().name} (${getRankInfo().progress}%)`
+            : applyRankedResult(didWin, onlineMatchSettings.opponentRankTier);
+        rankedChange.style.display = 'block';
+    } else {
+        rankedChange.style.display = 'none';
+    }
     document.getElementById('online-match-result').style.display = 'flex';
     let secondsUntilReload = 5;
     const leavingStatus = document.getElementById('online-leaving-status');
@@ -466,7 +675,14 @@ function handleOnlineMatchEnd(message) {
         leavingStatus.textContent = `Leaving match in ${secondsUntilReload}...`;
     }, 1000);
 
-    if (winnerTeam === getOnlineTeam(onlineRole) && !onlineWinnerRewarded) {
+    if (onlineMatchSettings?.ranked && didWin && !onlineRankedWinRecorded) {
+        onlineRankedWinRecorded = true;
+        localStorage.setItem('rankedWins', getRankedWins() + 1);
+        scheduleLeaderboardSync();
+        if (leaderboardMetric === 'ranked') loadLeaderboard();
+    }
+
+    if (didWin && !onlineWinnerRewarded) {
         onlineWinnerRewarded = true;
         addXP(1500);
     }
@@ -498,7 +714,9 @@ function updateOnlineMatch() {
 
 function connectToOnlineRoom(request) {
     if (onlineSocket && onlineSocket.readyState === WebSocket.OPEN) return;
-    setOnlineStatus(request.type === 'create-room' ? 'Creating room...' : 'Joining room...');
+    if (request.type !== 'find-ranked-match') {
+        setOnlineStatus(request.type === 'create-room' ? 'Creating room...' : 'Joining room...');
+    }
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const host = window.location.host || 'localhost:8000';
     const serverUrl = window.location.hostname === 'corbock.github.io'
@@ -540,7 +758,11 @@ function connectToOnlineRoom(request) {
             setOnlineStatus(`Room ${onlineRoomCode}: ${message.playerCount}/${onlineRoomPlayerLimit} players online.`);
             updateOnlineLobbyUI(message.playerCount, onlineRoomPlayerLimit);
         } else if (message.type === 'match-start') {
+            onlineRankedQueueActive = false;
             launchOnlineMatch(message.settings);
+        } else if (message.type === 'ranked-waiting') {
+            document.getElementById('ranked-queue-status').textContent = 'Waiting for opponent...';
+            setOnlineStatus('Waiting for an available ranked opponent...');
         } else if (message.type === 'match-end') {
             handleOnlineMatchEnd(message);
         } else if (message.type === 'state') {
@@ -557,15 +779,24 @@ function connectToOnlineRoom(request) {
         }
     });
     onlineSocket.addEventListener('close', () => {
+        if (onlineExpectedClose) {
+            onlineExpectedClose = false;
+            return;
+        }
         if (!fatalServerError && !connectionError) setOnlineStatus('Disconnected from lobby.');
     });
     onlineSocket.addEventListener('error', () => {
         connectionError = true;
+        if (request.type === 'find-ranked-match') {
+            document.getElementById('ranked-queue-status').textContent = 'Could not connect to ranked matchmaking.';
+        }
         setOnlineStatus('Could not connect to the online lobby.');
     });
 }
 
 window.hostOnlineRoom = hostOnlineRoom;
+window.joinRankedQueue = joinRankedQueue;
+window.cancelRankedQueue = cancelRankedQueue;
 window.showJoinRoomForm = showJoinRoomForm;
 window.joinOnlineRoom = joinOnlineRoom;
 window.updateOnlineLimitLabel = updateOnlineLimitLabel;
@@ -578,6 +809,7 @@ function launchOnlineMatch(settings) {
     onlineMatchEnded = false;
     onlineEndRequestPending = false;
     onlineWinnerRewarded = false;
+    onlineRankedWinRecorded = false;
     onlineMatchEndsAt = settings.rule === 'timer' ? Date.now() + settings.limit * 60000 : 0;
     onlineMatchRemainingSeconds = settings.rule === 'timer' ? settings.limit * 60 : 0;
     possessionTimer = 0;
@@ -597,6 +829,7 @@ function launchOnlineMatch(settings) {
     onlineResetSequence = 0;
     onlineLastResetSequence = 0;
     startGame('online');
+    updateOnlineScoreNames();
 }
 
 function setCarBodyColor(car, color) {
@@ -936,7 +1169,7 @@ function startGame(mode) {
     document.getElementById('gui').style.display = 'block';
     const onlineHud = document.getElementById('online-match-hud');
     onlineHud.style.display = currentMode === 'online' ? 'flex' : 'none';
-    document.getElementById('online-end-button').style.display = currentMode === 'online' && onlineRole === 'p1' ? 'block' : 'none';
+    document.getElementById('online-end-button').style.display = currentMode === 'online' && onlineRole === 'p1' && !onlineMatchSettings?.ranked ? 'block' : 'none';
     document.getElementById('online-match-result').style.display = 'none';
 
     const p2Hud = document.getElementById('p2-gui');
@@ -4492,13 +4725,13 @@ function update() {
             const shotDistance = lastHitPosition.distanceTo(goalCenter);
         
             // 3. Check threshold (Adjust 180 to fit your arena size)
-            if (lastHitter && shotDistance > 230) {
+            if (currentMode !== 'online' && lastHitter && shotDistance > 180) {
                 updateMissionProgress('long_shot', 1);
                 showMissionToast(`🚀 LONGSHOT! (${Math.round(shotDistance)}m)`);
                 addXP(500)
                 // --- ADD THE SECRET DETECTOR HERE ---
                 // Let's set a super deep target distance threshold (e.g., 200)
-                const absoluteLaserDistance = 300;
+                const absoluteLaserDistance = 200;
                 const isScopeUnlocked = localStorage.getItem('secret_unlocked_sniper_scope') === 'true';
         
                 if (shotDistance >= absoluteLaserDistance && !isScopeUnlocked) {

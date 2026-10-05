@@ -62,6 +62,89 @@ canvas {
 .home-content {
     margin: 36px auto 0;
 }
+#rank-panel {
+    --rank-color: #aa713e;
+    position: absolute;
+    top: 72px;
+    right: clamp(16px, 3vw, 42px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: min(170px, 15vw);
+    padding: 14px 12px;
+    color: #fff;
+    background: rgba(8, 15, 22, 0.88);
+    border: 1px solid color-mix(in srgb, var(--rank-color), transparent 35%);
+    border-radius: 8px;
+    z-index: 2;
+}
+.rank-label {
+    margin: 0 0 8px;
+    color: #d9e3e7;
+    font-size: 13px;
+    font-weight: 700;
+}
+.rank-emblem {
+    position: relative;
+    width: 92px;
+    height: 102px;
+    color: var(--rank-color);
+}
+.rank-emblem svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.5));
+}
+.rank-shield-texture {
+    fill: url(#rank-shield-texture);
+}
+.rank-shield {
+    fill: var(--rank-color);
+    fill-opacity: 0.80;
+    stroke: rgba(255, 255, 255, 0.88);
+    stroke-width: 3;
+}
+.rank-shield-mark {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.34);
+    stroke-width: 2;
+}
+#rank-emblem-mark {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding-bottom: 8px;
+    color: #fff;
+    font-size: 23px;
+    font-weight: 800;
+    text-shadow: 0 2px 3px rgba(0, 0, 0, 0.65);
+}
+#rank-name {
+    margin-top: 5px;
+    color: var(--rank-color);
+    font-size: 15px;
+}
+.rank-progress-track {
+    width: 100%;
+    height: 6px;
+    margin-top: 12px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 3px;
+}
+#rank-progress-fill {
+    width: 0;
+    height: 100%;
+    background: var(--rank-color);
+    transition: width 0.25s ease;
+}
+#rank-progress-label {
+    margin: 6px 0 0;
+    color: #bdcbd0;
+    font-size: 11px;
+}
 #leaderboard-panel {
     position: absolute;
     top: 72px;
@@ -104,7 +187,7 @@ canvas {
 }
 .leaderboard-tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
     margin: 12px 0;
 }
@@ -336,6 +419,13 @@ canvas {
         box-sizing: border-box;
         margin: 0 auto 20px;
     }
+    #rank-panel {
+        position: static;
+        order: 3;
+        width: min(92vw, 220px);
+        box-sizing: border-box;
+        margin: 0 auto 20px;
+    }
 }
 #challenges-container {
     position: absolute;
@@ -562,6 +652,17 @@ h2 {
     color: white;
     font-size: 24px;
     letter-spacing: 2px;
+}
+.ranked-score-emblem {
+    display: inline-block;
+    width: 14px;
+    height: 16px;
+    margin-right: 3px;
+    vertical-align: -2px;
+    letter-spacing: 0;
+}
+.ranked-score-names > span {
+    white-space: nowrap;
 }
 /* HUD Container */
 #gui {

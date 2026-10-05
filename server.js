@@ -35,6 +35,7 @@ const httpServer = http.createServer((request, response) => {
 const socketServer = new WebSocket.Server({ server: httpServer });
 const rooms = new Map();
 const sessions = new Map();
+const rankedQueue = [];
 
 function broadcast(room, message) {
     const payload = JSON.stringify(message);
@@ -61,6 +62,53 @@ function createRoomCode() {
 
 function normalizePlayerName(name) {
     return String(name || '').trim().slice(0, 20) || 'Player';
+}
+
+function createRankedMatch(firstPlayer, secondPlayer) {
+    const hostPlayer = firstPlayer.rankedWins <= secondPlayer.rankedWins ? firstPlayer : secondPlayer;
+    const guestPlayer = hostPlayer === firstPlayer ? secondPlayer : firstPlayer;
+    const playerRankTiers = {
+        p1: hostPlayer.rankTier,
+        p2: guestPlayer.rankTier
+    };
+    const code = createRoomCode();
+    const playerNames = {
+        p1: normalizePlayerName(hostPlayer.playerName),
+        p2: normalizePlayerName(guestPlayer.playerName),
+        p3: null,
+        p4: null
+    };
+    const room = new Map([[hostPlayer.socket, 'p1'], [guestPlayer.socket, 'p2']]);
+    room.started = true;
+    room.ended = false;
+    room.playerLimit = 2;
+    room.playerNames = playerNames;
+    room.ranked = true;
+    room.playerRankTiers = playerRankTiers;
+    room.settings = { mode: 'normal', rule: 'goals', limit: 5, playerLimit: 2, ranked: true };
+    room.endsAt = 0;
+    rooms.set(code, room);
+
+    [hostPlayer, guestPlayer].forEach((player) => {
+        const role = player === hostPlayer ? 'p1' : 'p2';
+        sessions.set(player.socket, { room, code, role });
+        player.socket.send(JSON.stringify({
+            type: 'role',
+            role,
+            code,
+            playerCount: 2,
+            playerLimit: 2,
+            playerNames
+        }));
+        player.socket.send(JSON.stringify({
+            type: 'match-start',
+            settings: {
+                ...room.settings,
+                playerRankTier: playerRankTiers[role],
+                opponentRankTier: playerRankTiers[role === 'p1' ? 'p2' : 'p1']
+            }
+        }));
+    });
 }
 
 socketServer.on('connection', (socket) => {
@@ -111,6 +159,32 @@ socketServer.on('connection', (socket) => {
             broadcast(room, { type: 'player-count', playerCount: room.size, playerLimit: room.playerLimit, playerNames: room.playerNames });
             return;
         }
+        if (message.type === 'find-ranked-match') {
+            if (sessions.has(socket) || rankedQueue.some(player => player.socket === socket)) return;
+            const playerId = String(message.playerId || '').slice(0, 100);
+            const player = {
+                socket,
+                playerId,
+                playerName: normalizePlayerName(message.playerName),
+                rankedWins: Number.isSafeInteger(message.rankedWins) && message.rankedWins >= 0
+                    ? message.rankedWins
+                    : 0,
+                rankTier: Number.isSafeInteger(message.rankPoints) && message.rankPoints >= 0
+                    ? Math.min(14, Math.floor(Math.min(message.rankPoints, 1499) / 100))
+                    : 0
+            };
+            const opponentIndex = rankedQueue.findIndex(candidate =>
+                candidate.socket.readyState === WebSocket.OPEN && candidate.playerId !== playerId
+            );
+            if (opponentIndex === -1) {
+                rankedQueue.push(player);
+                socket.send(JSON.stringify({ type: 'ranked-waiting' }));
+                return;
+            }
+            const opponent = rankedQueue.splice(opponentIndex, 1)[0];
+            createRankedMatch(opponent, player);
+            return;
+        }
         const session = sessions.get(socket);
         if (!session) return;
         if (message.type === 'hit') {
@@ -151,7 +225,7 @@ socketServer.on('connection', (socket) => {
             return;
         }
         if (message.type === 'end-match') {
-            if (session.role === 'p1' && session.room.started && Array.isArray(message.score) && message.score.length === 2 && message.score.every(value => Number.isSafeInteger(value) && value >= 0)) {
+            if (!session.room.ranked && session.role === 'p1' && session.room.started && Array.isArray(message.score) && message.score.length === 2 && message.score.every(value => Number.isSafeInteger(value) && value >= 0)) {
                 endRoomMatch(session.room, message.score, 'host');
             }
             return;
@@ -186,6 +260,8 @@ socketServer.on('connection', (socket) => {
     });
 
     socket.on('close', () => {
+        const queueIndex = rankedQueue.findIndex(player => player.socket === socket);
+        if (queueIndex !== -1) rankedQueue.splice(queueIndex, 1);
         const session = sessions.get(socket);
         if (!session) return;
         session.room.delete(socket);

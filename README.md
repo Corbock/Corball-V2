@@ -2,9 +2,9 @@
 
 ## Global leaderboard setup
 
-The title-screen leaderboard uses Supabase and stays offline until configured. Create a Supabase project, run the SQL in [`TheCode/leaderboard.sql`](TheCode/leaderboard.sql) in the SQL Editor, then copy the project URL and anon/public key into `LEADERBOARD_SUPABASE_URL` and `LEADERBOARD_SUPABASE_ANON_KEY` near the top of `TheCode/Script.js`.
+The title-screen leaderboard uses Supabase and stays offline until configured. Create a Supabase project, run the SQL in [`TheCode/leaderboard.sql`](TheCode/leaderboard.sql) in the SQL Editor, then copy the project URL and anon/public key into `LEADERBOARD_SUPABASE_URL` and `LEADERBOARD_SUPABASE_ANON_KEY` near the top of `TheCode/Script.js`. If the leaderboard table already exists, run the updated SQL again to add the `ranked_wins` and `rank_points` columns.
 
-The game submits the existing local profile's career goals and battle-pass level under a random ID stored in that browser. Split-screen players do not receive separate leaderboard profiles. This is a casual, client-submitted board: players can alter local data or submit fabricated scores, so it is not suitable for prizes or competitive rankings. Never put a Supabase service-role key in browser code.
+The game submits the existing local profile's career goals, battle-pass level, ranked wins, and rank points under a random ID stored in that browser. Ranked matchmaking uses the submitted ranked-win total to choose the host; each division has 100 rank points. A win earns 25 points plus 7 per opponent division above yours, while a loss costs 5 points plus 2 per opponent division below yours. These values are client-submitted, so ranks are not tamper-proof and are not suitable for prizes. Never put a Supabase service-role key in browser code.
 
 ## Online matches on GitHub Pages
 

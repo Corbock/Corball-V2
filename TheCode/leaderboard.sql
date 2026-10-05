@@ -3,8 +3,16 @@ create table if not exists public.corball_leaderboard (
 	display_name text not null check (char_length(display_name) between 1 and 20),
 	total_goals integer not null default 0 check (total_goals >= 0),
 	battle_pass_level integer not null default 1 check (battle_pass_level >= 1),
+	ranked_wins integer not null default 0 check (ranked_wins >= 0),
+	rank_points integer not null default 0 check (rank_points between 0 and 1499),
 	updated_at timestamptz not null default now()
 );
+
+alter table public.corball_leaderboard
+	add column if not exists ranked_wins integer not null default 0 check (ranked_wins >= 0);
+
+alter table public.corball_leaderboard
+	add column if not exists rank_points integer not null default 0 check (rank_points between 0 and 1499);
 
 alter table public.corball_leaderboard enable row level security;
 
