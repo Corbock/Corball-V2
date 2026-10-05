@@ -395,6 +395,8 @@ function showHome() {
     document.getElementById('ai-mode-selection').style.display = 'none'; // <--- ADD THIS LINE
     document.getElementById('online-mode-selection').style.display = 'none';
     document.getElementById('garage-selection').style.display = 'none';
+    document.getElementById('settings-selection').style.display = 'none';
+    rebindingAction = null;
     document.getElementById('home-section').style.display = 'flex';
     refreshMenuStats();
     
@@ -2910,6 +2912,7 @@ scene.add(blueHelper);
 const orangeHelper = new THREE.Box3Helper(orangeGoalZone, 0xe67e22);
 scene.add(orangeHelper);
 const keys = {};
+let ballCam = false;
 let cameraTarget = new THREE.Vector3(0, 0, 0);
 const aspect = (window.innerWidth / 2) / window.innerHeight;
 let camera = camera1;
@@ -2949,16 +2952,112 @@ let dashParticles = [];
 let explosionParticles = [];
 const GOAL_COLORS = { blue: 0x00ffff, orange: 0xffa500 };
 let score = [0, 0];
+// --- SETTINGS: KEYBINDS & CAMERA ---
+const DEFAULT_BINDS = {
+    forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
+    boost: 'ShiftLeft', drift: 'KeyC', jump: 'Space', reset: 'KeyR', ballCam: 'KeyF'
+};
+const BIND_LABELS = {
+    forward: 'Accelerate', back: 'Brake / Reverse', left: 'Steer Left', right: 'Steer Right',
+    boost: 'Boost', drift: 'Drift', jump: 'Jump / Flip', reset: 'Reset Car', ballCam: 'Ball Cam'
+};
+const DEFAULT_CAM = { height: 7, distance: 22, fov: 0 };
+let keyBinds = Object.assign({}, DEFAULT_BINDS, JSON.parse(localStorage.getItem('keyBinds') || '{}'));
+let camSettings = Object.assign({}, DEFAULT_CAM, JSON.parse(localStorage.getItem('camSettings') || '{}'));
+let rebindingAction = null;
+
+// Translate a physical key into the default code the game logic reads
+function remapKey(code) {
+    for (const action in keyBinds) {
+        if (keyBinds[action] === code) return DEFAULT_BINDS[action];
+    }
+    // A default key whose action was moved elsewhere does nothing
+    for (const action in DEFAULT_BINDS) {
+        if (DEFAULT_BINDS[action] === code && keyBinds[action] !== code) return 'Unbound_' + code;
+    }
+    return code;
+}
+
 window.addEventListener('keydown', (e) => {
-    // Use e.code for things like 'Slash' and 'ShiftRight'
-    keys[e.code] = true;
+    if (rebindingAction) {
+        e.preventDefault();
+        if (e.code !== 'Escape') {
+            for (const a in keyBinds) if (keyBinds[a] === e.code) keyBinds[a] = keyBinds[rebindingAction];
+            keyBinds[rebindingAction] = e.code;
+            localStorage.setItem('keyBinds', JSON.stringify(keyBinds));
+        }
+        rebindingAction = null;
+        renderKeybindList();
+        return;
+    }
+    const code = remapKey(e.code);
+    keys[code] = true;
     
     // Safety for M key
     if (e.key.toLowerCase() === 'm') keys['KeyM'] = true;
     
     if (e.code === 'Slash') e.preventDefault(); 
+
+    if (code === 'KeyF' && !e.repeat && !/INPUT|TEXTAREA/.test(e.target.tagName)) {
+        ballCam = !ballCam;
+    }
 });
-window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+window.addEventListener('keyup', (e) => { keys[remapKey(e.code)] = false; });
+
+function keyLabel(code) {
+    return code.replace(/^Key/, '').replace(/^Digit/, '').replace('Arrow', '↔ ').replace('ShiftLeft', 'Left Shift')
+        .replace('ShiftRight', 'Right Shift').replace('ControlLeft', 'Left Ctrl').replace('ControlRight', 'Right Ctrl');
+}
+
+function renderKeybindList() {
+    const list = document.getElementById('keybind-list');
+    if (!list) return;
+    list.innerHTML = '';
+    for (const action in DEFAULT_BINDS) {
+        const row = document.createElement('div');
+        row.className = 'settings-row';
+        const label = document.createElement('span');
+        label.textContent = BIND_LABELS[action];
+        const btn = document.createElement('button');
+        btn.className = 'menu-btn small';
+        btn.textContent = rebindingAction === action ? 'Press a key...' : keyLabel(keyBinds[action]);
+        btn.onclick = () => { rebindingAction = action; renderKeybindList(); };
+        row.append(label, btn);
+        list.appendChild(row);
+    }
+}
+
+function updateCamSetting(name, value) {
+    camSettings[name] = Number(value);
+    localStorage.setItem('camSettings', JSON.stringify(camSettings));
+    const out = document.getElementById('cam-' + name + '-value');
+    if (out) out.textContent = value;
+}
+
+function syncCamSliders() {
+    for (const name in camSettings) {
+        const input = document.getElementById('cam-' + name);
+        if (input) input.value = camSettings[name];
+        const out = document.getElementById('cam-' + name + '-value');
+        if (out) out.textContent = camSettings[name];
+    }
+}
+
+function resetSettings() {
+    keyBinds = Object.assign({}, DEFAULT_BINDS);
+    camSettings = Object.assign({}, DEFAULT_CAM);
+    localStorage.removeItem('keyBinds');
+    localStorage.removeItem('camSettings');
+    renderKeybindList();
+    syncCamSliders();
+}
+
+function showSettings() {
+    document.getElementById('home-section').style.display = 'none';
+    document.getElementById('settings-selection').style.display = 'block';
+    renderKeybindList();
+    syncCamSliders();
+}
 
 function createStadiumLight(x, z) {
     const poleGeo = new THREE.CylinderGeometry(0.5, 0.5, 40);
@@ -3788,6 +3887,15 @@ function animatePoliceLights(currentTime) {
 function updateCamera(cam, target, smoothTracker) {
     if (!target || !smoothTracker) return;
 
+    // Mode code sets the base FOV; layer the user's offset on top
+    if (cam.fov !== cam._appliedFov) cam._baseFov = cam.fov;
+    const wantedFov = (cam._baseFov ?? cam.fov) + camSettings.fov;
+    if (cam.fov !== wantedFov) {
+        cam.fov = wantedFov;
+        cam.updateProjectionMatrix();
+    }
+    cam._appliedFov = cam.fov;
+
     if (cameraState === "CELEBRATE") {
         const broadcastPos = new THREE.Vector3(
             goalFocusPoint.x > 0 ? 120 : -120, 
@@ -3801,6 +3909,16 @@ function updateCamera(cam, target, smoothTracker) {
         const shake = (Math.random() - 0.5) * p1Juice.shake;
         cam.position.y += shake;
 
+    } else if (ballCam) {
+        // Sit behind the car on the ball->car line, looking at the ball
+        const toCar = target.position.clone().sub(ball.position).setY(0);
+        if (toCar.lengthSq() < 0.01) toCar.set(0, 0, 1);
+        toCar.normalize();
+        const targetPos = target.position.clone()
+            .addScaledVector(toCar, camSettings.distance + p1Juice.zoom)
+            .add(new THREE.Vector3(0, camSettings.height + 2, 0));
+        cam.position.lerp(targetPos, 0.2);
+        cam.lookAt(ball.position);
     } else {
         // Create a version of the rotation that ONLY has the Y-axis (the turn)
         const flatRotation = new THREE.Quaternion().setFromAxisAngle(
@@ -3823,7 +3941,7 @@ function updateCamera(cam, target, smoothTracker) {
         p1Juice.lean = THREE.MathUtils.lerp(p1Juice.lean, targetLean, 0.05);
         p2Juice.lean = THREE.MathUtils.lerp(p2Juice.lean, targetLean, 0.05);
         
-        const offset = new THREE.Vector3(p1Juice.lean, 7 + p1Juice.zoom, 22); 
+        const offset = new THREE.Vector3(p1Juice.lean, camSettings.height + p1Juice.zoom, camSettings.distance); 
         const relativeOffset = offset.applyQuaternion(smoothTracker);
         
         const targetPos = target.position.clone().add(relativeOffset);

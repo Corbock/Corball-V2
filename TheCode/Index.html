@@ -15,6 +15,7 @@
 
                 <button class="menu-btn" onclick="showModes()">PLAY</button>
                 <button class="menu-btn" onclick="showGarage()">GARAGE</button>
+                <button class="menu-btn" onclick="showSettings()">SETTINGS</button>
                 <div class="xp-bar-container">
                     <p>Level: <span id="levelDisplay">1</span></p>
                     <div class="xp-bg" style="background: #333; width: 200px; height: 10px; border-radius: 5px; margin: 10px auto;">
@@ -116,6 +117,24 @@
             <button class="back-btn" onclick="showHome()">← SAVE & EXIT</button>
         </div>
     
+        <div class="menu-content" id="settings-selection" style="display: none;">
+            <h2>SETTINGS</h2>
+            <h3>Keybinds (Player 1)</h3>
+            <div id="keybind-list"></div>
+            <h3>Camera</h3>
+            <div class="settings-row"><span>Height</span>
+                <input type="range" id="cam-height" min="2" max="20" step="0.5" oninput="updateCamSetting('height', this.value)">
+                <span id="cam-height-value" class="settings-value"></span></div>
+            <div class="settings-row"><span>Distance</span>
+                <input type="range" id="cam-distance" min="10" max="45" step="1" oninput="updateCamSetting('distance', this.value)">
+                <span id="cam-distance-value" class="settings-value"></span></div>
+            <div class="settings-row"><span>FOV offset</span>
+                <input type="range" id="cam-fov" min="-30" max="30" step="1" oninput="updateCamSetting('fov', this.value)">
+                <span id="cam-fov-value" class="settings-value"></span></div>
+            <button class="menu-btn small" onclick="resetSettings()">RESET TO DEFAULT</button>
+            <button class="back-btn" onclick="showHome()">← BACK</button>
+        </div>
+
         <div class="menu-content" id="mode-selection" style="display: none;">
             <h2>SELECT GAME MODE</h2>
             <button class="menu-btn" onclick="startGame('single')">PRACTICE (SOLO)</button>
