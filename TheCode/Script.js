@@ -3124,8 +3124,8 @@ function equipExplosion(id) {
 
 // ---------------- DAILY WHEEL ----------------
 const WHEEL_SEGMENTS = [
-    { label: '500 XP', color: '#2b6cb0', weight: 24, prize: { kind: 'xp', amount: 500 } },
-    { label: 'Common Drop', color: '#6b7680', weight: 22, prize: { kind: 'crate', crate: 'common', amount: 1 } },
+    { label: '500 XP', color: '#2b6cb0', weight: 22, prize: { kind: 'xp', amount: 500 } },
+    { label: 'Common Drop', color: '#6b7680', weight: 24, prize: { kind: 'crate', crate: 'common', amount: 1 } },
     { label: '1500 XP', color: '#2f855a', weight: 14, prize: { kind: 'xp', amount: 1500 } },
     { label: 'Drop Item', color: '#b7791f', weight: 10, prize: { kind: 'item' } },
     { label: '2x Common', color: '#4a5560', weight: 12, prize: { kind: 'crate', crate: 'common', amount: 2 } },
@@ -3264,9 +3264,9 @@ const CRATE_TYPES = {
 };
 // Better drops shift the odds toward higher rarities
 const CRATE_ODDS = {
-    common: { common: 85, uncommon: 13, rare: 1.8, legendary: 0.19, exotic: 0.01 },
-    rare: { common: 40, uncommon: 35, rare: 18, legendary: 6.5, exotic: 0.5 },
-    exotic: { common: 5, uncommon: 20, rare: 35, legendary: 30, exotic: 10 }
+    common: { common: 75, uncommon: 23, rare: 1.8, legendary: 0.19, exotic: 0.01 },
+    rare: { common: 30, uncommon: 40, rare: 23, legendary: 6.5, exotic: 0.5 },
+    exotic: { common: 1, uncommon: 20, rare: 24, legendary: 35, exotic: 20 }
 };
 const EXOTIC_DROP_LEVEL_INTERVAL = 150;
 const DUPLICATE_XP = { common: 100, uncommon: 250, rare: 600, legendary: 1500, exotic: 5000 };
