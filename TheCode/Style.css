@@ -753,3 +753,70 @@ h2 {
 .settings-row .menu-btn { margin: 0; width: 150px; padding: 6px; font-size: 16px; }
 .settings-row input[type=range] { flex: 1; }
 .settings-value { min-width: 32px; text-align: right; }
+
+/* LOOT DROPS */
+#loot-container { margin: 15px 0; }
+#loot-list { display: flex; gap: 12px; flex-wrap: wrap; }
+.loot-crate-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    min-width: 140px; padding: 12px; background: #111; color: #fff;
+    border: 2px solid var(--crate-color); border-radius: 10px; cursor: pointer;
+    box-shadow: 0 0 10px color-mix(in srgb, var(--crate-color) 40%, transparent);
+}
+.loot-crate-btn:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+.loot-crate-btn:not(:disabled):hover { transform: scale(1.05); }
+.loot-crate-icon { font-size: 32px; }
+.loot-crate-name { font-weight: bold; color: var(--crate-color); }
+.loot-crate-count { font-size: 18px; }
+.loot-crate-source { font-size: 10px; color: #888; }
+
+.loot-overlay {
+    position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle, rgba(0,0,0,0.85), rgba(0,0,0,0.97));
+}
+.loot-rays {
+    position: absolute; width: 900px; height: 900px; opacity: 0; border-radius: 50%;
+    background: repeating-conic-gradient(var(--crate-color) 0 8deg, transparent 8deg 24deg);
+    -webkit-mask-image: radial-gradient(circle, #000 0, transparent 65%);
+    mask-image: radial-gradient(circle, #000 0, transparent 65%);
+    animation: loot-spin 8s linear infinite; transition: opacity 0.6s;
+}
+.loot-overlay.revealed .loot-rays {
+    opacity: 0.55;
+    background: repeating-conic-gradient(var(--rarity-color) 0 8deg, transparent 8deg 24deg);
+}
+.loot-crate { position: relative; font-size: 140px; filter: drop-shadow(0 0 25px var(--crate-color)); }
+.loot-crate.shaking { animation: loot-shake 0.3s infinite; }
+.loot-crate.shaking-hard { animation: loot-shake 0.08s infinite; filter: drop-shadow(0 0 60px var(--crate-color)) brightness(1.6); }
+.loot-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.loot-flash.go { animation: loot-flash 0.9s ease-out; }
+.loot-reveal {
+    position: relative; display: none; flex-direction: column; align-items: center; gap: 10px;
+    padding: 30px 50px; background: #0b0b0b; border: 3px solid var(--rarity-color); border-radius: 14px;
+    box-shadow: 0 0 50px var(--rarity-color); color: #fff; text-align: center;
+}
+.loot-reveal.show { display: flex; animation: loot-pop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1); }
+.loot-rarity { font-size: 20px; letter-spacing: 6px; color: var(--rarity-color); font-weight: bold; }
+.loot-item-name { font-size: 38px; font-weight: bold; text-shadow: 0 0 15px var(--rarity-color); }
+.loot-item-type { font-size: 12px; color: #888; }
+.loot-dupe { font-size: 14px; color: #ffaa00; }
+@keyframes loot-spin { to { transform: rotate(360deg); } }
+@keyframes loot-shake {
+    0%, 100% { transform: translate(0, 0) rotate(0); }
+    25% { transform: translate(-6px, 2px) rotate(-5deg); }
+    75% { transform: translate(6px, -2px) rotate(5deg); }
+}
+@keyframes loot-flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes loot-pop { 0% { transform: scale(0.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+/* DAILY WHEEL */
+#daily-wheel { display: flex; flex-direction: column; align-items: center; width: 100%; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.15); }
+.wheel-wrap { position: relative; width: 150px; height: 150px; max-width: 100%; }
+#wheel-canvas { position: static; top: auto; left: auto; z-index: auto; width: 100%; height: 100%; border-radius: 50%; box-shadow: 0 0 12px rgba(255,255,255,0.25); }
+.wheel-pointer {
+    position: absolute; top: -6px; left: 50%; transform: translateX(-50%); z-index: 2;
+    border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 14px solid #ffd54a;
+}
+#daily-wheel .menu-btn { margin-top: 8px; font-size: 11px; }
+#daily-wheel .menu-btn:disabled { opacity: 0.5; cursor: default; }
+#wheel-status { margin: 4px 0 0; font-size: 11px; color: #9fb0b8; }

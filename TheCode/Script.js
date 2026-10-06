@@ -119,7 +119,30 @@ function getRankInfo(rankPoints = getRankPoints()) {
     };
 }
 
+const RANK_REWARDS = [
+    'cone_bronze', 'viking_bronze',
+    'cone_silver', 'tophat_silver', 'neon_silver',
+    'cone_gold', 'coins', 'propeller_gold',
+    'tophat_diamond', 'potato_diamond', 'exp_diamond',
+    'tophat_real', 'real', 'exp_real'
+];
+
+// Reward for reaching rank index i (i >= 1) is RANK_REWARDS[i - 1]; unlocks are permanent.
+function grantRankRewards(tierIndex = getRankInfo().tierIndex) {
+    const newlyUnlocked = [];
+    for (let i = 1; i <= tierIndex && i - 1 < RANK_REWARDS.length; i++) {
+        const key = `secret_unlocked_${RANK_REWARDS[i - 1]}`;
+        if (localStorage.getItem(key) !== 'true') {
+            localStorage.setItem(key, 'true');
+            newlyUnlocked.push(RANK_REWARDS[i - 1]);
+        }
+    }
+    return newlyUnlocked;
+}
+
 function refreshRankUI() {
+    grantRankRewards();
+    refreshWheelUI();
     const panel = document.getElementById('rank-panel');
     if (!panel) return;
     const rank = getRankInfo();
@@ -153,8 +176,14 @@ function applyRankedResult(didWin, opponentRankTier) {
     refreshRankUI();
 
     const rankAfter = getRankInfo(newRankPoints);
+    if (!Number.isSafeInteger(Number.parseInt(localStorage.getItem('highestRankDropTier'), 10))) {
+        localStorage.setItem('highestRankDropTier', rankBefore.tierIndex);
+    }
+    const rareDrops = checkRankDrops(rankAfter.tierIndex);
+    const unlockedItems = grantRankRewards(rankAfter.tierIndex)
+        .map(id => ALL_ITEMS.find(item => item.id === id)?.name || id);
     const changeLabel = rankAfter.tierIndex > rankBefore.tierIndex
-        ? `RANK UP: ${rankAfter.name}`
+        ? `RANK UP: ${rankAfter.name}${unlockedItems.length ? ` | Unlocked: ${unlockedItems.join(', ')}` : ''}${rareDrops ? ` | +${rareDrops} Rare Drop` : ''}`
         : rankAfter.tierIndex < rankBefore.tierIndex
             ? `RANK DOWN: ${rankAfter.name}`
             : `${didWin ? '+' : ''}${rankChange} points | ${rankAfter.name} (${rankAfter.progress}%)`;
@@ -1744,10 +1773,32 @@ const ALL_ITEMS = [
     { id: 'potato_fire', name: '🔥 Fiery Potato', type: 'hat', isSecret: true },
     { id: 'clown_nose', name: '🤡 Clown Nose', type: 'hat', isSecret: true },
     { id: 'sniper_scope', name: '🎯 Sniper Scope', type: 'hat', isSecret: true },
-    { id: 'satellite', name: '📡 Dish', type: 'hat', lvl: 27 },
+    
     { id: 'ufo', name: '🛸 ufo', type: 'hat', isSecret: true },
+
+    // RANKED ITEMS
+    { id: 'cone_bronze', name: '🚧 Cone: 🟫', type: 'hat', isSecret: true },
+    { id: 'viking_bronze', name: '🛡️ Viking: 🟫', type: 'hat', isSecret: true },
+    { id: 'cone_silver', name: '🚧 Cone: Silver', type: 'hat', isSecret: true },
+    { id: 'tophat_silver', name: '🎩 Top Hat: Silver', type: 'hat', isSecret: true },
+    { id: 'neon_silver', name: '✨ Halo: Silver', type: 'hat', isSecret: true },
+    { id: 'cone_gold', name: '🚧 Cone: 🟨', type: 'hat', isSecret: true },
+    { id: 'coins', name: 'Coins', type: 'boost', isSecret: true },
+    { id: 'propeller_gold', name: '🚁 Propeller: 🟨', type: 'hat', isSecret: true },
+    { id: 'tophat_diamond', name: '🎩 Top Hat: 💎', type: 'hat', isSecret: true },
+    { id: 'potato_diamond', name: '🥔 Potato: 💎', type: 'hat', isSecret: true },
+    { id: 'exp_diamond', name: 'Diamondnova', type: 'explosion', isSecret: true },
+    { id: 'tophat_real', name: '🎩 Top Hat: Real', type: 'hat', isSecret: true },
+    { id: 'real', name: 'Real Boost', type: 'boost', isSecret: true },
+    { id: 'exp_real', name: 'Diamondnova: Real', type: 'explosion', isSecret: true },
     
-    
+    // DROP ITEMS
+    { id: 'plank_eyes', name: '👀 Plank', type: 'hat', isDropItem: true, rarity: 'common' },
+    { id: 'rubber_duck', name: '🦆 Rubber Duck', type: 'hat', isDropItem: true, rarity: 'uncommon' },
+    { id: 'double_tophat', name: '🎩🎩 Double Hat', type: 'hat', isDropItem: true, rarity: 'rare' },
+    { id: 'satellite', name: '📡 Dish', type: 'hat', isDropItem: true, rarity: 'legendary' },
+    { id: 'rubber_duck_purple', name: '🦆 Rubber Duck: Exotic', type: 'hat', isDropItem: true, rarity: 'exotic' },
+
     // DECALS
     { id: 'woodDecal', name: 'Wood', type: 'decal', lvl: 3 },
     { id: 'leafDecal', name: 'Leaf', type: 'decal', lvl: 4 },
@@ -1822,10 +1873,298 @@ function createHat(type) {
         //hatGroup.rotation.x = Math.PI * -0.01;
         hatGroup.add(top);
     } 
+    if (type === 'tophat_silver') {
+        // Brim
+        const brim = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.5, 1.5, 0.1, 16),
+            new THREE.MeshStandardMaterial({
+                color: 0xd3d3d3, // Silver color
+                metalness: 0.6,
+                roughness: 0.2
+            })
+        );
+        hatGroup.add(brim);
+
+        // Cylinder
+        const top = new THREE.Mesh(
+            new THREE.CylinderGeometry(1, 1, 2, 16),
+            new THREE.MeshStandardMaterial({
+                color: 0xd3d3d3, // Silver color
+                metalness: 0.6,
+                roughness: 0.2
+            })
+        );
+        top.position.y = 1;
+        hatGroup.rotation.x = Math.PI * 0.01;
+        hatGroup.add(top);
+    } 
+    if (type === 'tophat_diamond') {
+        // Brim
+        const brim = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.5, 1.5, 0.1, 16),
+            new THREE.MeshStandardMaterial({
+                color: 0xB9F2FF, // Diamond color
+                metalness: 0.6,
+                roughness: 0.15,
+                metalness: 0.1,
+                transparent: true,
+                opacity: 0.75
+            })
+        );
+        hatGroup.add(brim);
+
+        // Cylinder
+        const top = new THREE.Mesh(
+            new THREE.CylinderGeometry(1, 1, 2, 16),
+            new THREE.MeshStandardMaterial({
+                color: 0xB9F2FF, // Diamond color
+                metalness: 0.6,
+                roughness: 0.15,
+                metalness: 0.1,
+                transparent: true,
+                opacity: 0.75
+            })
+        );
+        top.position.y = 1;
+        //hatGroup.rotation.x = Math.PI * -0.01;
+        hatGroup.add(top);
+    } 
+    if (type === 'tophat_real') {
+        // Brim
+        const brim = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.5, 1.5, 0.1, 16),
+            new THREE.MeshStandardMaterial({
+                color: 0x01ff01, // Real color
+                metalness: 0.6,
+                roughness: 0.2
+            })
+        );
+        hatGroup.add(brim);
+
+        // Cylinder
+        const top = new THREE.Mesh(
+            new THREE.CylinderGeometry(1, 1, 2, 16),
+            new THREE.MeshStandardMaterial({
+                color: 0x01ff01, // Real color
+                metalness: 0.6,
+                roughness: 0.2
+            })
+        );
+        top.position.y = 1;
+        //hatGroup.rotation.x = Math.PI * -0.01;
+        hatGroup.add(top);
+    } 
+    if (type === 'double_tophat') {
+        const hatMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+        // --- BOTTOM HAT ---
+        // Bottom Brim
+        const brim1 = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.5, 1.5, 0.1, 16),
+            hatMaterial
+        );
+        hatGroup.add(brim1);
+
+        // Bottom Cylinder (height 2, centered at y = 1)
+        const top1 = new THREE.Mesh(
+            new THREE.CylinderGeometry(1, 1, 2, 16),
+            hatMaterial
+        );
+        top1.position.y = 1;
+        hatGroup.add(top1);
+
+        // --- TOP HAT (Stacked on top) ---
+        // Top Brim (placed at y = 2.05, resting on top of the first cylinder)
+        const brim2 = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.5, 1.5, 0.1, 16),
+            hatMaterial
+        );
+        brim2.position.y = 2.05;
+        hatGroup.add(brim2);
+
+        // Top Cylinder (placed at y = 3.1)
+        const top2 = new THREE.Mesh(
+            new THREE.CylinderGeometry(1, 1, 2, 16),
+            hatMaterial
+        );
+        top2.position.y = 3.1;
+        hatGroup.add(top2);
+    }
+    if (type === 'rubber_duck') {
+        const duckYellow = new THREE.MeshStandardMaterial({ 
+            color: 0xFFD700, 
+            roughness: 0.3, 
+            metalness: 0.1 
+        });
+        const beakOrange = new THREE.MeshStandardMaterial({ 
+            color: 0xFF4500, 
+            roughness: 0.5 
+        });
+        const eyeBlack = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+        // 1. Body
+        const body = new THREE.Mesh(
+            new THREE.SphereGeometry(0.8, 16, 16),
+            duckYellow
+        );
+        body.scale.set(1, 0.8, 1.2); // Slightly squashed/elongated for a duck shape
+        body.position.y = 0.6;
+        hatGroup.add(body);
+
+        // 2. Head
+        const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 16, 16),
+            duckYellow
+        );
+        head.position.set(0, 1.3, 0.3);
+        hatGroup.add(head);
+
+        // 3. Beak
+        const beak = new THREE.Mesh(
+            new THREE.ConeGeometry(0.2, 0.4, 16),
+            beakOrange
+        );
+        beak.rotation.x = Math.PI / 2; // Point forward
+        beak.position.set(0, 1.25, 0.8);
+        hatGroup.add(beak);
+
+        // 4. Eyes
+        const eyeGeo = new THREE.SphereGeometry(0.06, 8, 8);
+        
+        const leftEye = new THREE.Mesh(eyeGeo, eyeBlack);
+        leftEye.position.set(-0.25, 1.4, 0.6);
+        hatGroup.add(leftEye);
+
+        const rightEye = new THREE.Mesh(eyeGeo, eyeBlack);
+        rightEye.position.set(0.25, 1.4, 0.6);
+        hatGroup.add(rightEye);
+    }
+    if (type === 'rubber_duck_purple') {
+        const duckYellow = new THREE.MeshStandardMaterial({ 
+            color: 0xFF00FF, 
+            roughness: 0.2, 
+            metalness: 0.6 
+        });
+        const beakOrange = new THREE.MeshStandardMaterial({ 
+            color: 0xFF4500, 
+            roughness: 0.5 
+        });
+        const eyeBlack = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+        // 1. Body
+        const body = new THREE.Mesh(
+            new THREE.SphereGeometry(0.8, 16, 16),
+            duckYellow
+        );
+        body.scale.set(1, 0.8, 1.2); // Slightly squashed/elongated for a duck shape
+        body.position.y = 0.6;
+        hatGroup.add(body);
+
+        // 2. Head
+        const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 16, 16),
+            duckYellow
+        );
+        head.position.set(0, 1.3, 0.3);
+        hatGroup.add(head);
+
+        // 3. Beak
+        const beak = new THREE.Mesh(
+            new THREE.ConeGeometry(0.2, 0.4, 16),
+            beakOrange
+        );
+        beak.rotation.x = Math.PI / 2; // Point forward
+        beak.position.set(0, 1.25, 0.8);
+        hatGroup.add(beak);
+
+        // 4. Eyes
+        const eyeGeo = new THREE.SphereGeometry(0.06, 8, 8);
+        
+        const leftEye = new THREE.Mesh(eyeGeo, eyeBlack);
+        leftEye.position.set(-0.25, 1.4, 0.6);
+        hatGroup.add(leftEye);
+
+        const rightEye = new THREE.Mesh(eyeGeo, eyeBlack);
+        rightEye.position.set(0.25, 1.4, 0.6);
+        hatGroup.add(rightEye);
+    }
+    if (type === 'plank_eyes') {
+        // --- WOODEN BOARD ---
+        const boardMat = new THREE.MeshStandardMaterial({ 
+            color: 0x8B5A2B, // Wood brown
+            roughness: 0.8,
+            metalness: 0.1 
+        });
+
+        // Main wooden plank
+        const board = new THREE.Mesh(
+            new THREE.BoxGeometry(2.5, 0.2, 1.2), // width, height, depth
+            boardMat
+        );
+        board.position.y = 0.1;
+        hatGroup.add(board);
+
+        // --- GOOGLY EYES ---
+        const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+        const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+        // Helper function to create an eye
+        const createGooglyEye = (xOffset) => {
+            const eyeGroup = new THREE.Group();
+
+            // White base
+            const eyeBase = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.3, 0.3, 0.05, 16),
+                eyeWhiteMat
+            );
+            eyeGroup.add(eyeBase);
+
+            // Black pupil
+            const pupil = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.12, 0.12, 0.06, 16),
+                pupilMat
+            );
+            // Slightly offset the pupil position for a goofy look
+            pupil.position.set(0.05, 0.01, -0.05);
+            eyeGroup.add(pupil);
+
+            // Position on top of the board
+            eyeGroup.position.set(xOffset, 0.22, 0);
+            return eyeGroup;
+        };
+
+        // Left Eye & Right Eye
+        hatGroup.add(createGooglyEye(-0.5));
+        hatGroup.add(createGooglyEye(0.5));
+    }
     if (type === 'cone') {
         const cone = new THREE.Mesh(
             new THREE.ConeGeometry(1, 2, 16),
             new THREE.MeshStandardMaterial({ color: 0xffa500 })
+        );
+        cone.position.y = 1;
+        hatGroup.add(cone);
+    }
+    if (type === 'cone_silver') {
+        const cone = new THREE.Mesh(
+            new THREE.ConeGeometry(1, 2, 16),
+            new THREE.MeshStandardMaterial({ color: 0xC0C0C0, metalness: 0.6, roughness: 0.2 })
+        );
+        cone.position.y = 1;
+        hatGroup.add(cone);
+    }
+    if (type === 'cone_bronze') {
+        const cone = new THREE.Mesh(
+            new THREE.ConeGeometry(1, 2, 16),
+            new THREE.MeshStandardMaterial({ color: 0xCD7F32, metalness: 0.6, roughness: 0.2 })
+        );
+        cone.position.y = 1;
+        hatGroup.add(cone);
+    }
+    if (type === 'cone_gold') {
+        const cone = new THREE.Mesh(
+            new THREE.ConeGeometry(1, 2, 16),
+            new THREE.MeshStandardMaterial({ color: 0xFFD700, metalness: 0.6, roughness: 0.2 })
         );
         cone.position.y = 1;
         hatGroup.add(cone);
@@ -1946,6 +2285,28 @@ function createHat(type) {
         rightHorn.rotation.z = -Math.PI / 4;
         hatGroup.add(rightHorn);
     }
+    if (type === 'viking_bronze') {
+        // Main Helmet
+        const helm = new THREE.Mesh(
+            new THREE.SphereGeometry(1.2, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+            new THREE.MeshStandardMaterial({ color: 0xCD7F32, metalness: 0.6, roughness: 0.2 })
+        );
+        hatGroup.add(helm);
+
+        // Horns
+        const hornGeo = new THREE.ConeGeometry(0.4, 1.5, 8);
+        const hornMat = new THREE.MeshStandardMaterial({ color: 0xCD7F32, metalness: 0.6, roughness: 0.2 });
+        
+        const leftHorn = new THREE.Mesh(hornGeo, hornMat);
+        leftHorn.position.set(-1, 0.8, 0);
+        leftHorn.rotation.z = Math.PI / 4;
+        hatGroup.add(leftHorn);
+
+        const rightHorn = new THREE.Mesh(hornGeo, hornMat);
+        rightHorn.position.set(1, 0.8, 0);
+        rightHorn.rotation.z = -Math.PI / 4;
+        hatGroup.add(rightHorn);
+    }
     if (type === 'vikingRed') {
         // Main Helmet
         const helm = new THREE.Mesh(
@@ -2041,7 +2402,22 @@ function createHat(type) {
         blades.name = "propellerBlades"; // Name it so we can spin it later!
         hatGroup.add(blades);
     }
-    
+    if (type === 'propeller_gold') {
+        // Cap
+        const cap = new THREE.Mesh(
+            new THREE.SphereGeometry(1, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+            new THREE.MeshStandardMaterial({ color: 0xFFD700, metalness: 0.6, roughness: 0.2 })
+        );
+        hatGroup.add(cap);
+
+        // Propeller blades
+        const bladeGeo = new THREE.BoxGeometry(2.5, 0.1, 0.4);
+        const bladeMat = new THREE.MeshStandardMaterial({ color: 0xFFD700, metalness: 0.6, roughness: 0.2 });
+        const blades = new THREE.Mesh(bladeGeo, bladeMat);
+        blades.position.y = 1.1;
+        blades.name = "propellerBlades"; // Name it so we can spin it later!
+        hatGroup.add(blades);
+    }
     if (type === 'propeller_black') {
         // Cap
         const cap = new THREE.Mesh(
@@ -2076,7 +2452,24 @@ function createHat(type) {
         hatGroup.add(glow);
     
     }
+    if (type === 'neon_silver') {
+        // 1. The Glowing Ring
+        const ringGeo = new THREE.TorusGeometry(1.2, 0.1, 16, 100);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); // Silver Neon
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = 1.5;
+        hatGroup.add(ring);
     
+        // 2. The Actual Light Source
+        // This makes the hat "glow" onto the car and floor
+        const glow = new THREE.PointLight(0xffffff, 1, 15);
+        glow.position.y = 2;
+        glow.decay = 2; // Real-world light falloff
+        hatGroup.add(glow);
+    
+    }
     if (type === 'miniCar') {
         // 1. Create a full car using your existing function
         // We use "blue" to match the original look
@@ -2212,7 +2605,71 @@ function createHat(type) {
         // Final scaling
         hatGroup.scale.set(1.3, 1.3, 1.3);
     }
+    if (type === 'potato_diamond') {
+        // 1. Premium Spud Materials
+        const potatoMat = new THREE.MeshStandardMaterial({ 
+            color: 0xB9F2FF, 
+            roughness: 0.15,      // Low roughness for a shiny, glossy finish
+            metalness: 0.1, 
+            transparent: true,    // Enables transparency
+            opacity: 0.75         // Adjust between 0.0 and 1.0 (0.75 = 75% visible)
+        });
+        const magmaMat = new THREE.MeshStandardMaterial({ color: 0xB9F2FF, emissive: 0xB9F2FF, emissiveIntensity: 1, roughness: 0.5 });
     
+        // --- STRUCTURAL SWAP BREAKTHROUGH ---
+        // Create two sub-containers inside the main hat group
+        const staticGroup = new THREE.Group();
+        staticGroup.name = "potatoSpudStatic";
+        hatGroup.add(staticGroup);
+    
+        const flameGroup = new THREE.Group();
+        flameGroup.name = "potatoSpudFlamesGroup"; // We will target THIS for the dancing!
+        hatGroup.add(flameGroup);
+        // -------------------------------------
+    
+        // 2. Base Potato Mesh (Add to staticGroup)
+        const potatoBase = new THREE.Mesh(new THREE.SphereGeometry(0.8, 12, 12), potatoMat);
+        potatoBase.scale.set(1.4, 0.9, 0.9); 
+        potatoBase.position.y = 0.5;
+        staticGroup.add(potatoBase);
+    
+        // 3. Molten Magma Cracks (Add to staticGroup)
+        for (let i = 0; i < 3; i++) {
+            const crack = new THREE.Mesh(new THREE.SphereGeometry(0.79, 8, 8), magmaMat);
+            crack.scale.set(1.38, 0.89, 0.89); 
+            crack.position.set(
+                (Math.random() - 0.5) * 0.1,
+                0.5 + (Math.random() - 0.5) * 0.05,
+                (Math.random() - 0.5) * 0.1
+            );
+            crack.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            staticGroup.add(crack);
+        }
+    
+        // 4. Dynamic Flame Embers (Add to flameGroup!)
+        const fireGeo = new THREE.ConeGeometry(0.25, 1.5, 8);
+        const fireMat = new THREE.MeshBasicMaterial({ color: 0xb9f2ff });
+    
+        for (let i = 0; i < 5; i++) {
+            const flame = new THREE.Mesh(fireGeo, fireMat);
+            flame.position.set(
+                (Math.random() - 0.5) * 0.6,
+                0.7 + Math.random() * 0.3, 
+                (Math.random() - 0.5) * 0.4
+            );
+            flame.rotation.x = Math.PI / 4 + (Math.random() * 0.2); 
+            flame.scale.set(1, 1 + Math.random() * 0.5, 1);
+            flameGroup.add(flame); // Nested safely inside the moving container
+        }
+    
+        // 5. Light Source (Add to flameGroup so the light bounces with the fire)
+        const fireGlow = new THREE.PointLight(0xb9f2ff, 3, 8);
+        fireGlow.position.set(0, 1.2, 0);
+        flameGroup.add(fireGlow);
+    
+        // Final scaling
+        hatGroup.scale.set(1.3, 1.3, 1.3);
+    }
     if (type === 'clown_nose') {
         // A bright red shiny sphere
         const nose = new THREE.Mesh(
@@ -2561,7 +3018,9 @@ const boostTextures = {
     neon_red: textureLoader.load('https://codehs.com/uploads/62f793480b79ac3ae0008a47ea8551d6'),
     void_white: textureLoader.load('https://codehs.com/uploads/b3a105151c2c450ee2568ee199ae89f6'),
     void_black: textureLoader.load('https://codehs.com/uploads/472aecbdbec7b0bb6a64e02d951e7f06'),
-    ghost_white: textureLoader.load('https://codehs.com/uploads/0bab0704422e29307d576c4ee9588e35')
+    ghost_white: textureLoader.load('https://codehs.com/uploads/0bab0704422e29307d576c4ee9588e35'),
+    coins: textureLoader.load('https://codehs.com/uploads/56020e969c8c5bbaa9a8ac121edbbed2'),
+    real: textureLoader.load('https://codehs.com/uploads/651a46bd37c1dcbf720238b5ee406ef3')
 };
 function createBoostParticle(carPosition, isShowroom = false, targetScene = scene, boostType = currentBoostType, emissionVelocity = null) {
     // 1. Use a flat plane instead of a sphere
@@ -2661,6 +3120,296 @@ function equipExplosion(id) {
     updateGarageUI();
 }
 
+
+
+// ---------------- DAILY WHEEL ----------------
+const WHEEL_SEGMENTS = [
+    { label: '500 XP', color: '#2b6cb0', weight: 24, prize: { kind: 'xp', amount: 500 } },
+    { label: 'Common Drop', color: '#6b7680', weight: 22, prize: { kind: 'crate', crate: 'common', amount: 1 } },
+    { label: '1500 XP', color: '#2f855a', weight: 14, prize: { kind: 'xp', amount: 1500 } },
+    { label: 'Drop Item', color: '#b7791f', weight: 10, prize: { kind: 'item' } },
+    { label: '2x Common', color: '#4a5560', weight: 12, prize: { kind: 'crate', crate: 'common', amount: 2 } },
+    { label: 'Rare Drop', color: '#3182ce', weight: 8, prize: { kind: 'crate', crate: 'rare', amount: 1 } },
+    { label: '5000 XP', color: '#805ad5', weight: 3, prize: { kind: 'xp', amount: 5000 } },
+    { label: 'Exotic Drop', color: '#d23cff', weight: 1, prize: { kind: 'crate', crate: 'exotic', amount: 1 } }
+];
+let wheelSpinning = false;
+let wheelAngle = 0;
+let wheelTestMode = false;
+
+function canSpinWheel() {
+    return wheelTestMode || localStorage.getItem('lastWheelSpinDate') !== new Date().toDateString();
+}
+
+function drawWheel() {
+    const canvas = document.getElementById('wheel-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const size = canvas.width, r = size / 2;
+    const arc = (Math.PI * 2) / WHEEL_SEGMENTS.length;
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    ctx.translate(r, r);
+    ctx.rotate(wheelAngle);
+    WHEEL_SEGMENTS.forEach((seg, i) => {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, r - 3, i * arc, (i + 1) * arc);
+        ctx.closePath();
+        ctx.fillStyle = seg.color;
+        ctx.fill();
+        ctx.strokeStyle = '#0b0f14';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.save();
+        ctx.rotate(i * arc + arc / 2);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(seg.label, r - 10, 3);
+        ctx.restore();
+    });
+    ctx.restore();
+}
+
+function refreshWheelUI() {
+    const btn = document.getElementById('wheel-spin-btn');
+    const status = document.getElementById('wheel-status');
+    if (!btn) return;
+    const ready = canSpinWheel();
+    btn.disabled = wheelSpinning || !ready;
+    btn.textContent = wheelTestMode ? 'SPIN (TEST)' : ready ? 'SPIN' : 'COME BACK TOMORROW';
+    if (status) status.textContent = wheelTestMode ? 'Test mode: unlimited spins' : ready ? 'Free daily spin ready!' : 'Spun today';
+    drawWheel();
+}
+
+function pickWheelSegment() {
+    const total = WHEEL_SEGMENTS.reduce((sum, seg) => sum + seg.weight, 0);
+    let roll = Math.random() * total;
+    for (let i = 0; i < WHEEL_SEGMENTS.length; i++) {
+        roll -= WHEEL_SEGMENTS[i].weight;
+        if (roll < 0) return i;
+    }
+    return 0;
+}
+
+function spinWheel() {
+    if (wheelSpinning || lootOpening || !canSpinWheel()) return;
+    wheelSpinning = true;
+    if (!wheelTestMode) localStorage.setItem('lastWheelSpinDate', new Date().toDateString());
+    refreshWheelUI();
+
+    const index = pickWheelSegment();
+    const arc = (Math.PI * 2) / WHEEL_SEGMENTS.length;
+    // The pointer sits at the top (-90deg); rotate so the winning segment's center lands there
+    const target = -Math.PI / 2 - (index * arc + arc / 2);
+    const current = ((wheelAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const finalAngle = wheelAngle + (Math.PI * 2 * 5) + ((((target - current) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2));
+    const startAngle = wheelAngle;
+    const duration = 4500;
+    const startTime = performance.now();
+
+    function frame(now) {
+        const t = Math.min(1, (now - startTime) / duration);
+        const eased = 1 - Math.pow(1 - t, 4);
+        wheelAngle = startAngle + (finalAngle - startAngle) * eased;
+        drawWheel();
+        if (t < 1) return requestAnimationFrame(frame);
+        wheelSpinning = false;
+        awardWheelPrize(WHEEL_SEGMENTS[index]);
+        refreshWheelUI();
+    }
+    requestAnimationFrame(frame);
+}
+
+function awardWheelPrize(seg) {
+    const prize = seg.prize;
+    if (prize.kind === 'xp') {
+        addXP(prize.amount);
+        showMissionToast(`DAILY WHEEL: +${prize.amount} XP`);
+    } else if (prize.kind === 'crate') {
+        addCrate(prize.crate, prize.amount);
+        showMissionToast(`DAILY WHEEL: ${seg.label}!`);
+    } else if (prize.kind === 'item') {
+        const result = rollDrop('common');
+        if (result) presentDrop('common', result);
+    }
+}
+
+(function setupWheelSecret() {
+    const sequence = ['KeyC', 'KeyO', 'KeyR', 'KeyB', 'KeyO', 'KeyK'];
+    let progress = 0;
+    window.addEventListener('keydown', (e) => {
+        const home = document.getElementById('home-section');
+        if (!home || getComputedStyle(home).display === 'none') { progress = 0; return; }
+        progress = e.code === sequence[progress] ? progress + 1 : (e.code === sequence[0] ? 1 : 0);
+        if (progress === sequence.length) {
+            progress = 0;
+            wheelTestMode = !wheelTestMode;
+            showMissionToast(wheelTestMode ? 'WHEEL TEST MODE: UNLIMITED SPINS' : 'WHEEL TEST MODE OFF');
+            refreshWheelUI();
+        }
+    });
+})();
+
+// ---------------- LOOT DROPS ----------------
+const LOOT_RARITIES = ['common', 'uncommon', 'rare', 'legendary', 'exotic'];
+const RARITY_COLORS = {
+    common: '#b0b8c0', uncommon: '#4cd964', rare: '#3fa7ff', legendary: '#ffb02e', exotic: '#d23cff'
+};
+const CRATE_TYPES = {
+    common: { label: 'Common Drop', color: '#b0b8c0', source: 'Daily quests' },
+    rare: { label: 'Rare Drop', color: '#3fa7ff', source: 'Ranking up' },
+    exotic: { label: 'Exotic Drop', color: '#d23cff', source: 'Every 150 levels' }
+};
+// Better drops shift the odds toward higher rarities
+const CRATE_ODDS = {
+    common: { common: 85, uncommon: 13, rare: 1.8, legendary: 0.19, exotic: 0.01 },
+    rare: { common: 40, uncommon: 35, rare: 18, legendary: 6.5, exotic: 0.5 },
+    exotic: { common: 5, uncommon: 20, rare: 35, legendary: 30, exotic: 10 }
+};
+const EXOTIC_DROP_LEVEL_INTERVAL = 150;
+const DUPLICATE_XP = { common: 100, uncommon: 250, rare: 600, legendary: 1500, exotic: 5000 };
+let lootOpening = false;
+
+function getCrates() {
+    let crates = {};
+    try { crates = JSON.parse(localStorage.getItem('lootCrates')) || {}; } catch (e) { crates = {}; }
+    const result = {};
+    Object.keys(CRATE_TYPES).forEach(type => {
+        const n = Number.parseInt(crates[type], 10);
+        result[type] = Number.isSafeInteger(n) && n > 0 ? n : 0;
+    });
+    return result;
+}
+
+function addCrate(type, count = 1) {
+    if (!CRATE_TYPES[type] || count < 1) return;
+    const crates = getCrates();
+    crates[type] += count;
+    localStorage.setItem('lootCrates', JSON.stringify(crates));
+    renderLootUI();
+}
+
+function isDropOwned(id) {
+    return localStorage.getItem(`secret_unlocked_${id}`) === 'true';
+}
+
+function rollDrop(crateType) {
+    const pool = ALL_ITEMS.filter(item => item.isDropItem);
+    const odds = CRATE_ODDS[crateType];
+    const available = LOOT_RARITIES.filter(r => pool.some(item => item.rarity === r));
+    if (!available.length) return null;
+
+    const total = available.reduce((sum, r) => sum + (odds[r] || 0), 0);
+    let roll = Math.random() * total;
+    let rarity = available[available.length - 1];
+    for (const r of available) {
+        roll -= odds[r] || 0;
+        if (roll < 0) { rarity = r; break; }
+    }
+
+    const items = pool.filter(item => item.rarity === rarity);
+    const unowned = items.filter(item => !isDropOwned(item.id));
+    const chosen = (unowned.length ? unowned : items)[Math.floor(Math.random() * (unowned.length || items.length))];
+    return { item: chosen, duplicate: unowned.length === 0 };
+}
+
+function renderLootUI() {
+    const box = document.getElementById('loot-list');
+    if (!box) return;
+    const crates = getCrates();
+    box.innerHTML = '';
+    Object.keys(CRATE_TYPES).forEach(type => {
+        const info = CRATE_TYPES[type];
+        const btn = document.createElement('button');
+        btn.className = 'loot-crate-btn';
+        btn.style.setProperty('--crate-color', info.color);
+        btn.disabled = crates[type] === 0 || lootOpening;
+        btn.innerHTML = `<span class="loot-crate-icon">🎁</span>
+            <span class="loot-crate-name">${info.label}</span>
+            <span class="loot-crate-count">x${crates[type]}</span>
+            <span class="loot-crate-source">${info.source}</span>`;
+        btn.onclick = () => openCrate(type);
+        box.appendChild(btn);
+    });
+}
+
+function openCrate(type) {
+    if (lootOpening) return;
+    const crates = getCrates();
+    if (!crates[type]) return;
+
+    const result = rollDrop(type);
+    if (!result) return;
+    crates[type]--;
+    localStorage.setItem('lootCrates', JSON.stringify(crates));
+    presentDrop(type, result);
+}
+
+function presentDrop(type, result) {
+    lootOpening = true;
+    const { item, duplicate } = result;
+    localStorage.setItem(`secret_unlocked_${item.id}`, 'true');
+    const color = RARITY_COLORS[item.rarity];
+
+    const overlay = document.createElement('div');
+    overlay.className = 'loot-overlay';
+    overlay.style.setProperty('--crate-color', CRATE_TYPES[type].color);
+    overlay.style.setProperty('--rarity-color', color);
+    overlay.innerHTML = `
+        <div class="loot-rays"></div>
+        <div class="loot-crate">🎁</div>
+        <div class="loot-flash"></div>
+        <div class="loot-reveal">
+            <div class="loot-rarity">${item.rarity.toUpperCase()}</div>
+            <div class="loot-item-name">${item.name}</div>
+            <div class="loot-item-type">${item.type.toUpperCase()}</div>
+            <div class="loot-dupe">${duplicate ? `DUPLICATE: +${DUPLICATE_XP[item.rarity]} XP` : 'NEW!'}</div>
+            <button class="menu-btn small loot-close">AWESOME</button>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    const crateEl = overlay.querySelector('.loot-crate');
+    const revealEl = overlay.querySelector('.loot-reveal');
+    const flashEl = overlay.querySelector('.loot-flash');
+    crateEl.classList.add('shaking');
+    setTimeout(() => crateEl.classList.add('shaking-hard'), 1200);
+    setTimeout(() => {
+        flashEl.classList.add('go');
+        crateEl.style.display = 'none';
+        overlay.classList.add('revealed');
+        revealEl.classList.add('show');
+    }, 2400);
+
+    const close = () => {
+        overlay.remove();
+        lootOpening = false;
+        if (duplicate) addXP(DUPLICATE_XP[item.rarity]);
+        updateGarageUI();
+    };
+    overlay.querySelector('.loot-close').onclick = close;
+}
+
+function checkLevelDrops(oldLevel, newLevel) {
+    const earned = Math.floor(newLevel / EXOTIC_DROP_LEVEL_INTERVAL) - Math.floor(oldLevel / EXOTIC_DROP_LEVEL_INTERVAL);
+    if (earned > 0) {
+        addCrate('exotic', earned);
+        showMissionToast(`EXOTIC DROP EARNED! (Level ${Math.floor(newLevel / EXOTIC_DROP_LEVEL_INTERVAL) * EXOTIC_DROP_LEVEL_INTERVAL})`);
+    }
+}
+
+function checkRankDrops(tierIndex) {
+    const stored = Number.parseInt(localStorage.getItem('highestRankDropTier'), 10);
+    const highest = Number.isSafeInteger(stored) ? stored : 0;
+    if (tierIndex > highest) {
+        addCrate('rare', tierIndex - highest);
+        localStorage.setItem('highestRankDropTier', tierIndex);
+        return tierIndex - highest;
+    }
+    return 0;
+}
+
 function updateGarageUI() {
     let currentLevel = parseInt(localStorage.getItem('playerLevel')) || 1;
     
@@ -2671,6 +3420,7 @@ function updateGarageUI() {
     const bpTrack = document.getElementById('battle-pass-track');
     
     updateChallengeUI(); // update challenge stats
+    renderLootUI();
     // Clear current lists
     hatInv.innerHTML = '<button class="menu-btn small" onclick="equipHat(\'none\')">None</button>';
     boostInv.innerHTML = '<button class="menu-btn small" onclick="equipBoost(\'standard_orange\')">Classic</button>';
@@ -2681,8 +3431,8 @@ function updateGarageUI() {
     // --- THE FIX: Sort purely by level ---
     const battlePassOrder = [...ALL_ITEMS].sort((a, b) => {
         // Treat undefined or secret levels as Infinity so they always lose numerical comparisons
-        const lvlA = (a.isSecret || a.lvl === undefined) ? Infinity : a.lvl;
-        const lvlB = (b.isSecret || b.lvl === undefined) ? Infinity : b.lvl;
+        const lvlA = (a.isSecret || a.isDropItem || a.lvl === undefined) ? Infinity : a.lvl;
+        const lvlB = (b.isSecret || b.isDropItem || b.lvl === undefined) ? Infinity : b.lvl;
     
         return lvlA - lvlB;
     });
@@ -2691,7 +3441,7 @@ function updateGarageUI() {
         // --- UPDATED UNLOCK LOGIC ---
         let isUnlocked = false;
         
-        if (item.isSecret) {
+        if (item.isSecret || item.isDropItem) {
             // If it's a secret item, check if they completed its specific challenge
             isUnlocked = localStorage.getItem(`secret_unlocked_${item.id}`) === 'true';
         } else {
@@ -2701,7 +3451,7 @@ function updateGarageUI() {
         // ----------------------------
     
         // If it's a secret item and NOT unlocked, hide it completely from the garage/BP!
-        if (item.isSecret && !isUnlocked) return;
+        if ((item.isSecret || item.isDropItem) && !isUnlocked) return;
     
         if (isUnlocked) {
             const btn = document.createElement('button');
@@ -2737,7 +3487,7 @@ function updateGarageUI() {
         `;
         bpTrack.appendChild(card);
         // Render cleaner level tags on the card layout
-        const levelText = item.isSecret || item.lvl === undefined ? 'SECRET' : `Lvl ${item.lvl}`;
+        const levelText = item.isDropItem ? item.rarity.toUpperCase() : (item.isSecret || item.lvl === undefined ? 'SECRET' : `Lvl ${item.lvl}`);
         
         card.innerHTML = `
             <span class="bp-level">${levelText}</span>
@@ -2761,7 +3511,8 @@ function updateMissionProgress(type, amount) {
             // Logic: If it wasn't finished before, but it is now, give XP!
             if (oldVal < task.goal && newVal >= task.goal) {
                 addXP(task.reward);
-                showMissionToast(`CHALLENGE COMPLETE: ${task.text} (+${task.reward} XP)`);
+                addCrate('common');
+                showMissionToast(`CHALLENGE COMPLETE: ${task.text} (+${task.reward} XP + Common Drop)`);
                 
                 // Play a sound effect here if you have one!
                 // achievementSound.play(); 
@@ -3420,7 +4171,146 @@ function createGoalExplosion(x, z) {
         scene.add(flash);
         setTimeout(() => scene.remove(flash), 100); 
     }
+    if (!isBlueGoal && type === 'exp_diamond') {
 
+        // Replaced Deep Purple & Magenta with Light Blue variants
+        const coreColor = 0x00BFFF;   // Deep Light Blue (Deep Sky Blue)
+        const accentColor = 0x87CEFA; // Bright Soft Light Blue (Light Sky Blue)
+
+        // 1. THE MAIN CORE (Pavilion Facet Diamond Shape)
+        // OctahedronGeometry gives a diamond/double-pyramid faceted shape instead of a Sphere
+        const pGeo = new THREE.OctahedronGeometry(1.5, 0); 
+        const pMat = new THREE.MeshStandardMaterial({ 
+            color: coreColor, 
+            emissive: coreColor, 
+            emissiveIntensity: 8,
+            flatShading: true, // Highlights the facets of the diamond shape
+            transparent: true 
+        });
+        const ball = new THREE.Mesh(pGeo, pMat);
+        ball.position.set(x, 5, z);
+        scene.add(ball);
+
+        explosionParticles.push({
+            mesh: ball,
+            vel: new THREE.Vector3(0, 0, 0),
+            life: 1.0,
+            isFireball: true 
+        });
+
+        // 2. THE COSMIC RING (The "Saturn" Effect)
+        // We spawn 20-30 flat planes in a circle that scale outward
+        for (let i = 0; i < 30; i++) {
+            const angle = (i / 30) * Math.PI * 2;
+            const rGeo = new THREE.PlaneGeometry(4, 4);
+            const rMat = new THREE.MeshBasicMaterial({
+                color: accentColor,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const ringPart = new THREE.Mesh(rGeo, rMat);
+            
+            // Position them in a ring around the center
+            ringPart.position.set(x, 5, z);
+            
+            // Rotate them to lie flat and face outward
+            ringPart.rotation.x = Math.PI / 2;
+            ringPart.rotation.z = angle;
+
+            scene.add(ringPart);
+
+            // Give them a "radial" velocity (moving away from center)
+            const speed = 1.5;
+            explosionParticles.push({
+                mesh: ringPart,
+                vel: new THREE.Vector3(Math.cos(angle) * speed, 0, Math.sin(angle) * speed),
+                life: 1.0,
+                isRing: true // We'll add a quick scale-up for this in updateParticles
+            });
+        }
+        
+        // 3. THE CENTER FLASH
+        // Changed flash geometry from sphere to diamond shape as well
+        const flashGeo = new THREE.OctahedronGeometry(2.5, 0);
+        const flashMat = new THREE.MeshBasicMaterial({ color: 0xE0FFFF }); // Light Cyan/White flash
+        const flash = new THREE.Mesh(flashGeo, flashMat);
+        flash.position.set(x, 5, z);
+        scene.add(flash);
+        setTimeout(() => scene.remove(flash), 100); 
+    }
+    if (!isBlueGoal && type === 'exp_real') {
+
+        // Replaced Deep Purple & Magenta with Light Blue variants
+        const coreColor = 0x01ff01;   // real color
+        const accentColor = 0x008000; // green color
+
+        // 1. THE MAIN CORE (Pavilion Facet Diamond Shape)
+        // OctahedronGeometry gives a diamond/double-pyramid faceted shape instead of a Sphere
+        const pGeo = new THREE.OctahedronGeometry(1.5, 0); 
+        const pMat = new THREE.MeshStandardMaterial({ 
+            color: coreColor, 
+            emissive: coreColor, 
+            emissiveIntensity: 8,
+            flatShading: true, // Highlights the facets of the diamond shape
+            transparent: true 
+        });
+        const ball = new THREE.Mesh(pGeo, pMat);
+        ball.position.set(x, 5, z);
+        scene.add(ball);
+
+        explosionParticles.push({
+            mesh: ball,
+            vel: new THREE.Vector3(0, 0, 0),
+            life: 1.0,
+            isFireball: true 
+        });
+
+        // 2. THE COSMIC RING (The "Saturn" Effect)
+        // We spawn 20-30 flat planes in a circle that scale outward
+        for (let i = 0; i < 30; i++) {
+            const angle = (i / 30) * Math.PI * 2;
+            const rGeo = new THREE.PlaneGeometry(4, 4);
+            const rMat = new THREE.MeshBasicMaterial({
+                color: accentColor,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const ringPart = new THREE.Mesh(rGeo, rMat);
+            
+            // Position them in a ring around the center
+            ringPart.position.set(x, 5, z);
+            
+            // Rotate them to lie flat and face outward
+            ringPart.rotation.x = Math.PI / 2;
+            ringPart.rotation.z = angle;
+
+            scene.add(ringPart);
+
+            // Give them a "radial" velocity (moving away from center)
+            const speed = 1.5;
+            explosionParticles.push({
+                mesh: ringPart,
+                vel: new THREE.Vector3(Math.cos(angle) * speed, 0, Math.sin(angle) * speed),
+                life: 1.0,
+                isRing: true // We'll add a quick scale-up for this in updateParticles
+            });
+        }
+        
+        // 3. THE CENTER FLASH
+        // Changed flash geometry from sphere to diamond shape as well
+        const flashGeo = new THREE.OctahedronGeometry(2.5, 0);
+        const flashMat = new THREE.MeshBasicMaterial({ color: 0x01ff01 }); // real flash
+        const flash = new THREE.Mesh(flashGeo, flashMat);
+        flash.position.set(x, 5, z);
+        scene.add(flash);
+        setTimeout(() => scene.remove(flash), 100); 
+    }
     // --- STYLE B: THE TWIN SERPENTS (with Initial Blast) ---
     else if (!isBlueGoal && type === 'exp_ghost') {
         // 1. THE INITIAL BLAST: Spawn two expanding spheres immediately
@@ -3816,6 +4706,7 @@ function addXP(amount) {
 
     if (newLevel > currentLevel) {
         console.log("LEVEL UP! You are now level " + newLevel);
+        checkLevelDrops(currentLevel, newLevel);
         // You could trigger a cool sound effect or animation here
     }
 

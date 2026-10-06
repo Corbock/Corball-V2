@@ -43,6 +43,15 @@
                     <div id="rank-progress-fill"></div>
                 </div>
                 <p id="rank-progress-label">0% to next rank</p>
+                <div id="daily-wheel">
+                    <p class="rank-label">DAILY WHEEL</p>
+                    <div class="wheel-wrap">
+                        <div class="wheel-pointer"></div>
+                        <canvas id="wheel-canvas" width="150" height="150"></canvas>
+                    </div>
+                    <button id="wheel-spin-btn" class="menu-btn small" onclick="spinWheel()">SPIN</button>
+                    <p id="wheel-status"></p>
+                </div>
             </aside>
             <aside id="leaderboard-panel" aria-labelledby="leaderboard-title">
                 <div class="leaderboard-heading">
@@ -100,6 +109,10 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            <div id="loot-container">
+                <h3>LOOT DROPS</h3>
+                <div id="loot-list"></div>
             </div>
             <div id="challenges-container">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
