@@ -1794,10 +1794,17 @@ const ALL_ITEMS = [
     
     // DROP ITEMS
     { id: 'plank_eyes', name: '👀 Plank', type: 'hat', isDropItem: true, rarity: 'common' },
+    { id: 'plank_red', name: '👀 Plank: 🟥', type: 'hat', isDropItem: true, rarity: 'common' },
+    { id: 'dirtDecal', name: 'Dirt', type: 'decal', isDropItem: true, rarity: 'common' },
     { id: 'rubber_duck', name: '🦆 Rubber Duck', type: 'hat', isDropItem: true, rarity: 'uncommon' },
+    { id: 'camoDecal', name: 'Camo', type: 'decal', isDropItem: true, rarity: 'uncommon' },
     { id: 'double_tophat', name: '🎩🎩 Double Hat', type: 'hat', isDropItem: true, rarity: 'rare' },
+    { id: 'bubbleDecal', name: 'Bubbles', type: 'decal', isDropItem: true, rarity: 'rare' },
     { id: 'satellite', name: '📡 Dish', type: 'hat', isDropItem: true, rarity: 'legendary' },
+    { id: 'illusionDecal', name: 'Illusion', type: 'decal', isDropItem: true, rarity: 'legendary' },
     { id: 'rubber_duck_purple', name: '🦆 Rubber Duck: Exotic', type: 'hat', isDropItem: true, rarity: 'exotic' },
+    { id: 'crown_purple', name: '👑 Crown: Exotic', type: 'hat', isDropItem: true, rarity: 'exotic' },
+    { id: 'blackIceDecal', name: 'Black Ice: Exotic', type: 'decal', isDropItem: true, rarity: 'exotic' },
 
     // DECALS
     { id: 'woodDecal', name: 'Wood', type: 'decal', lvl: 3 },
@@ -2043,13 +2050,19 @@ function createHat(type) {
         const duckYellow = new THREE.MeshStandardMaterial({ 
             color: 0xFF00FF, 
             roughness: 0.2, 
-            metalness: 0.6 
+            metalness: 0.6,
+            transparent: true,
+            opacity: 0.9
         });
         const beakOrange = new THREE.MeshStandardMaterial({ 
             color: 0xFF4500, 
             roughness: 0.5 
         });
-        const eyeBlack = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const eyeBlack = new THREE.MeshBasicMaterial({
+            color: 0x4c00b0,
+            emissive: 0x4c00b0
+
+         });
 
         // 1. Body
         const body = new THREE.Mesh(
@@ -2078,7 +2091,7 @@ function createHat(type) {
         hatGroup.add(beak);
 
         // 4. Eyes
-        const eyeGeo = new THREE.SphereGeometry(0.06, 8, 8);
+        const eyeGeo = new THREE.SphereGeometry(0.2, 8, 8);
         
         const leftEye = new THREE.Mesh(eyeGeo, eyeBlack);
         leftEye.position.set(-0.25, 1.4, 0.6);
@@ -2092,6 +2105,55 @@ function createHat(type) {
         // --- WOODEN BOARD ---
         const boardMat = new THREE.MeshStandardMaterial({ 
             color: 0x8B5A2B, // Wood brown
+            roughness: 0.8,
+            metalness: 0.1 
+        });
+
+        // Main wooden plank
+        const board = new THREE.Mesh(
+            new THREE.BoxGeometry(2.5, 0.2, 1.2), // width, height, depth
+            boardMat
+        );
+        board.position.y = 0.1;
+        hatGroup.add(board);
+
+        // --- GOOGLY EYES ---
+        const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+        const pupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+        // Helper function to create an eye
+        const createGooglyEye = (xOffset) => {
+            const eyeGroup = new THREE.Group();
+
+            // White base
+            const eyeBase = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.3, 0.3, 0.05, 16),
+                eyeWhiteMat
+            );
+            eyeGroup.add(eyeBase);
+
+            // Black pupil
+            const pupil = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.12, 0.12, 0.06, 16),
+                pupilMat
+            );
+            // Slightly offset the pupil position for a goofy look
+            pupil.position.set(0.05, 0.01, -0.05);
+            eyeGroup.add(pupil);
+
+            // Position on top of the board
+            eyeGroup.position.set(xOffset, 0.22, 0);
+            return eyeGroup;
+        };
+
+        // Left Eye & Right Eye
+        hatGroup.add(createGooglyEye(-0.5));
+        hatGroup.add(createGooglyEye(0.5));
+    }
+    if (type === 'plank_red') {
+        // --- WOODEN BOARD ---
+        const boardMat = new THREE.MeshStandardMaterial({ 
+            color: 0xff0000, // Red
             roughness: 0.8,
             metalness: 0.1 
         });
@@ -2207,6 +2269,66 @@ function createHat(type) {
             let gemMat;
             if (i % 2 === 0) {
                 gemMat = new THREE.MeshStandardMaterial({ color: 0xff0000, metalness: 0.8, roughness: 0.1, emissive: 0xaa0000 }); // Red gem
+            } else {
+                gemMat = new THREE.MeshStandardMaterial({ color: 0x0000ff, metalness: 0.8, roughness: 0.1, emissive: 0x0000aa }); // Blue gem
+            }
+    
+            const gem = new THREE.Mesh(gemGeo, gemMat);
+            const angle = (i / numGems) * Math.PI * 2;
+            // Position gems slightly inset from the band edge
+            gem.position.set(Math.cos(angle) * 1.5, 0.3, Math.sin(angle) * 1.5 * 1.1); 
+            hatGroup.add(gem);
+        }
+    }
+    if (type === 'crown_purple') {
+        // === 1. The Padded Base (Velvet Cushion) ===
+        // This part sits on the car, giving the crown structure
+        const baseGeo = new THREE.CylinderGeometry(1.0, 1.2, 0.6, 16); 
+        const baseMat = new THREE.MeshStandardMaterial({ 
+            color: 0x4c00b0,
+            metalness: 0.6,
+            emissive: 0x4c00b0,
+            roughness: 0.2
+        }); 
+        const base = new THREE.Mesh(baseGeo, baseMat);
+        base.position.y = 0.3; // Sit it up slightly
+        base.scale.set(1.0, 1.0, 1.1); // Slightly elongated to fit better
+        hatGroup.add(base);
+    
+        // === 2. The Gold Circlet (The Main Band) ===
+        const bandGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.4, 16); // Thin band open at ends
+        const goldMat = new THREE.MeshStandardMaterial({ 
+            color: 0xFF00FF, 
+            roughness: 0.2, 
+            metalness: 0.6,
+            transparent: true,
+            opacity: 0.9 
+        });
+        const band = new THREE.Mesh(bandGeo, goldMat);
+        band.position.y = 0.3;
+        band.scale.set(1.0, 1.0, 1.1); // Match base elongation
+        hatGroup.add(band);
+    
+        // === 3. The Decorative Spikes (Fleur-de-lis points) ===
+        const spikeGeo = new THREE.ConeGeometry(0.3, 0.8, 8); // Simple spikes
+        const numSpikes = 8;
+        for (let i = 0; i < numSpikes; i++) {
+            const spike = new THREE.Mesh(spikeGeo, goldMat);
+            const angle = (i / numSpikes) * Math.PI * 2;
+            spike.position.set(Math.cos(angle) * 1.22, 0.8, Math.sin(angle) * 1.22 * 1.1);
+            spike.rotation.y = angle; // Rotate spikes to point outward
+            hatGroup.add(spike);
+        }
+    
+        // === 4. The Gemstones ===
+        const gemGeo = new THREE.IcosahedronGeometry(0.15, 1); // Faceted gem look
+        const numGems = 8;
+        
+        // Add red and blue gems alternating
+        for (let i = 0; i < numGems; i++) {
+            let gemMat;
+            if (i % 2 === 0) {
+                gemMat = new THREE.MeshStandardMaterial({ color: 0x4c00b0, metalness: 0.8, roughness: 0.1, emissive: 0x4c00b0 }); // Red gem
             } else {
                 gemMat = new THREE.MeshStandardMaterial({ color: 0x0000ff, metalness: 0.8, roughness: 0.1, emissive: 0x0000aa }); // Blue gem
             }
@@ -2952,6 +3074,13 @@ function createDecal(type) {
     if (type === 'hexDecal') textureUrl = 'https://codehs.com/uploads/9f077f0ed2027f67f7a5a7c11d935026';
     if (type === 'flameDecal') textureUrl = 'https://codehs.com/uploads/679d3e56af0f1ee02e561eb721b72113';
     if (type === 'corbokDecal') textureUrl = 'https://codehs.com/uploads/d525ddbb52a0df18b1052b4aba517bda';
+    if (type === 'blackIceDecal') textureUrl = 'https://codehs.com/uploads/8c4f1fbafc3774703c0e78c51636dfed';
+    if (type === 'brickDecal') textureUrl = 'https://codehs.com/uploads/f5db0e44b5b422bc570322a644b3b1ca';
+    if (type === 'camoDecal') textureUrl = 'https://codehs.com/uploads/9d6527408f68877d0a30b32b85a88e81';
+    if (type === 'dirtDecal') textureUrl = 'https://codehs.com/uploads/370c1c9a4f8e5772e8874f043260c1fe';
+    if (type === 'exoticDecal') textureUrl = 'https://codehs.com/uploads/f0986561cd789a58a0dcc9af6e81fb57';
+    if (type === 'illusionDecal') textureUrl = 'https://codehs.com/uploads/721afcaf84a17491b1cece506af6011d';
+    if (type === 'bubbleDecal') textureUrl = 'https://codehs.com/uploads/50563309d3498e9dd6f46254da767008';
     
 
     if (textureUrl !== '') {
