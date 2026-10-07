@@ -78,7 +78,7 @@ const RANK_COLORS = {
     Silver: '#aab8c3',
     Gold: '#e2b63f',
     Diamond: '#43c4dc',
-    Real: '#f16b83'
+    Real: '#13c100'
 };
 const MAX_RANK_POINTS = RANK_DIVISIONS.length * 100 - 1;
 let leaderboardMetric = 'goals';
@@ -796,6 +796,8 @@ function connectToOnlineRoom(request) {
             setOnlineStatus('Waiting for an available ranked opponent...');
         } else if (message.type === 'match-end') {
             handleOnlineMatchEnd(message);
+        } else if (message.type === 'ranked-opponent-disconnected') {
+            setOnlineStatus(`Opponent disconnected. Match awarded in ${message.graceSeconds} seconds.`);
         } else if (message.type === 'state') {
             applyOnlineState(message);
         } else if (message.type === 'hit') {
@@ -874,8 +876,15 @@ function getOnlineCosmetics() {
     return {
         bodyColor: localStorage.getItem('p1Color') || localStorage.getItem('savedP1Color') || p1SelectedColor,
         hat: localStorage.getItem('p1Hat') || 'none',
-        decal: localStorage.getItem('p1Decal') || 'none'
+        decal: localStorage.getItem('p1Decal') || 'none',
+        goalExplosion: currentExplosionType
     };
+}
+
+function normalizeOnlineExplosionType(type) {
+    return type === 'none' || (typeof type === 'string' && /^exp_[a-z]+$/.test(type))
+        ? type
+        : 'none';
 }
 
 function applyOnlineCosmetics(car, cosmetics) {
@@ -957,6 +966,7 @@ function applyOnlineState(message) {
         remotePlayer.velocity.set(remote.velocity.x, remote.velocity.y, remote.velocity.z);
         remotePlayer.isBoosting = remote.isBoosting === true;
         remotePlayer.boostType = boostTextures[remote.boostType] ? remote.boostType : 'standard_orange';
+        remotePlayer.goalExplosion = normalizeOnlineExplosionType(remote.cosmetics?.goalExplosion);
         const cosmeticsSignature = JSON.stringify(remote.cosmetics);
         if (remote.cosmetics && cosmeticsSignature !== remotePlayer.cosmeticsSignature) {
             applyOnlineCosmetics(remotePlayer.car, remote.cosmetics);
@@ -998,7 +1008,7 @@ function applyOnlineState(message) {
         isGoalScored = true;
         ballVel.set(0, 0, 0);
         ball.visible = false;
-        createGoalExplosion(goalEvent.x, 0, goalEvent.color);
+        createGoalExplosion(goalEvent.x, 0, goalEvent.explosionType);
         celebrate(goalEvent.text);
     }
 
@@ -1019,15 +1029,28 @@ function applyOnlineState(message) {
 
 function recordOnlineGoal(text, x, color) {
     if (currentMode !== 'online' || onlineRole !== 'p1') return;
+    const remotePlayers = getOnlineRoles()
+        .filter(role => role !== onlineRole)
+        .map(role => onlineCars?.[role])
+        .find(Boolean);
+    const otherPlayer = getOnlineRoles()
+        .filter(role => role !== onlineRole && getOnlineTeam(role) !== 'blue')
+        .map(role => onlineCars?.[role])
+        .find(Boolean) || remotePlayers;
+    const explosionType = x > 0
+        ? currentExplosionType
+        : otherPlayer?.goalExplosion || 'none';
     onlineGoalEvent = {
         id: ++onlineGoalSequence,
         text,
         x,
         color,
+        explosionType,
         scorerRole: ['p1', 'p2', 'p3', 'p4'].includes(lastHitter) ? lastHitter : null,
         score: [...score]
     };
     if (onlineGoalEvent.scorerRole === onlineRole) addXP(100);
+    return explosionType;
 }
 
 function handleOnlineHit(message) {
@@ -1536,7 +1559,8 @@ function configureOnlineCars() {
         onlineCars[role] = {
             car: createCar(isBlue ? 'blue' : 'orange', isBlue ? 'lightblue' : '#ffcc00'),
             velocity: new THREE.Vector3(),
-            juice: { zoom: 0, shake: 0, lean: 0 }
+            juice: { zoom: 0, shake: 0, lean: 0 },
+            goalExplosion: 'none'
         };
     });
 
@@ -4097,14 +4121,15 @@ function updateParticles() {
     }
 }
 
-function createGoalExplosion(x, z) {
+function createGoalExplosion(x, z, explosionType) {
     const isBlueGoal = x < -150;
-    const type = currentExplosionType;
+    const type = normalizeOnlineExplosionType(explosionType ?? currentExplosionType);
     const texture = explosionTextures[type];
     const isOrangeSide = x > 0;
+    const useEquippedExplosion = currentMode === 'online' || !isBlueGoal;
 
     // --- STYLE A: THE SUPERNOVA (Upgraded) ---
-    if (!isBlueGoal && type === 'exp_supernova') {
+    if (useEquippedExplosion && type === 'exp_supernova') {
         const coreColor = 0x800080; // Deep Purple
         const accentColor = 0xff00ff; // Bright Magenta/Pink
 
@@ -4170,7 +4195,7 @@ function createGoalExplosion(x, z) {
         setTimeout(() => scene.remove(flash), 100); 
     }
     
-    if (!isBlueGoal && type === 'exp_supernovawhite') {
+    if (useEquippedExplosion && type === 'exp_supernovawhite') {
         const coreColor = 0x000000; // black
         const accentColor = 0xffffff; // white
 
@@ -4235,7 +4260,7 @@ function createGoalExplosion(x, z) {
         scene.add(flash);
         setTimeout(() => scene.remove(flash), 100); 
     }
-    if (!isBlueGoal && type === 'exp_supernovared') {
+    if (useEquippedExplosion && type === 'exp_supernovared') {
         const coreColor = 0x000000; // black
         const accentColor = 0xff0000; // red
 
@@ -4300,7 +4325,7 @@ function createGoalExplosion(x, z) {
         scene.add(flash);
         setTimeout(() => scene.remove(flash), 100); 
     }
-    if (!isBlueGoal && type === 'exp_diamond') {
+    if (useEquippedExplosion && type === 'exp_diamond') {
 
         // Replaced Deep Purple & Magenta with Light Blue variants
         const coreColor = 0x00BFFF;   // Deep Light Blue (Deep Sky Blue)
@@ -4370,7 +4395,7 @@ function createGoalExplosion(x, z) {
         scene.add(flash);
         setTimeout(() => scene.remove(flash), 100); 
     }
-    if (!isBlueGoal && type === 'exp_real') {
+    if (useEquippedExplosion && type === 'exp_real') {
 
         // Replaced Deep Purple & Magenta with Light Blue variants
         const coreColor = 0x01ff01;   // real color
@@ -4441,7 +4466,7 @@ function createGoalExplosion(x, z) {
         setTimeout(() => scene.remove(flash), 100); 
     }
     // --- STYLE B: THE TWIN SERPENTS (with Initial Blast) ---
-    else if (!isBlueGoal && type === 'exp_ghost') {
+    else if (useEquippedExplosion && type === 'exp_ghost') {
         // 1. THE INITIAL BLAST: Spawn two expanding spheres immediately
         const colors = [0x0088ff, 0xe6005c]; // Blue and Pink
         colors.forEach((col, index) => {
@@ -4506,7 +4531,7 @@ function createGoalExplosion(x, z) {
         }, 60);
     }
     
-    else if (!isBlueGoal && type === 'exp_goldduel') {
+    else if (useEquippedExplosion && type === 'exp_goldduel') {
         // 1. THE INITIAL BLAST: Spawn two expanding spheres immediately
         const colors = [0xFFD700, 0xD3AF37]; // Blue and Pink
         colors.forEach((col, index) => {
@@ -4570,7 +4595,7 @@ function createGoalExplosion(x, z) {
             if (count > 25) clearInterval(serpentInterval);
         }, 60);
     }
-    else if (!isBlueGoal && type === 'exp_whiteduel') {
+    else if (useEquippedExplosion && type === 'exp_whiteduel') {
         // 1. THE INITIAL BLAST: Spawn two expanding spheres immediately
         const colors = [0x000000, 0xFFFFFF]; // Blue and Pink
         colors.forEach((col, index) => {
@@ -5884,8 +5909,8 @@ function update() {
             p1Juice.zoom = 5;  // Slight pull back
             p2Juice.zoom = 5;
             
-            recordOnlineGoal('BLUE SCORED!', 200, GOAL_COLORS.blue);
-            createGoalExplosion(200, 0, GOAL_COLORS.blue);
+            const blueGoalExplosion = recordOnlineGoal('BLUE SCORED!', 200, GOAL_COLORS.blue);
+            createGoalExplosion(200, 0, blueGoalExplosion);
             celebrate("BLUE SCORED!"); 
             ballVel.set(0, 0, 0); // Stop the ball movement
             ball.visible = false; // Optional: Hide the ball so only particles show
@@ -5931,8 +5956,8 @@ function update() {
             
             cameraTarget.set(-200, 5, 0)
             
-            recordOnlineGoal('ORANGE SCORED!', -200, GOAL_COLORS.orange);
-            createGoalExplosion(-200, 0, GOAL_COLORS.orange);
+            const orangeGoalExplosion = recordOnlineGoal('ORANGE SCORED!', -200, GOAL_COLORS.orange);
+            createGoalExplosion(-200, 0, orangeGoalExplosion);
             celebrate("ORANGE SCORED!"); 
             ballVel.set(0, 0, 0); // Stop the ball movement
             ball.visible = false; // Optional: Hide the ball so only particles show

@@ -36,6 +36,7 @@ const socketServer = new WebSocket.Server({ server: httpServer });
 const rooms = new Map();
 const sessions = new Map();
 const rankedQueue = [];
+const RANKED_DISCONNECT_GRACE_MS = 10000;
 
 function broadcast(room, message) {
     const payload = JSON.stringify(message);
@@ -47,9 +48,23 @@ function broadcast(room, message) {
 function endRoomMatch(room, score, reason) {
     if (room.ended) return;
     room.ended = true;
+    if (room.disconnectTimer) {
+        clearTimeout(room.disconnectTimer);
+        room.disconnectTimer = null;
+    }
     const winnerTeam = score[0] === score[1] ? null : score[0] > score[1] ? 'blue' : 'orange';
     const winnerRole = winnerTeam === 'blue' ? 'p1' : room.playerLimit === 2 ? 'p2' : 'p3';
     broadcast(room, { type: 'match-end', score, winnerRole: winnerTeam ? winnerRole : null, winnerTeam, reason });
+}
+
+function startRankedDisconnectTimer(room, disconnectedRole) {
+    room.disconnectedRole = disconnectedRole;
+    room.disconnectTimer = setTimeout(() => {
+        room.disconnectTimer = null;
+        if (room.ended || room.disconnectedRole !== disconnectedRole) return;
+        const score = disconnectedRole === 'p1' ? [0, 1] : [1, 0];
+        endRoomMatch(room, score, 'disconnect');
+    }, RANKED_DISCONNECT_GRACE_MS);
 }
 
 function createRoomCode() {
@@ -87,6 +102,8 @@ function createRankedMatch(firstPlayer, secondPlayer) {
     room.playerRankTiers = playerRankTiers;
     room.settings = { mode: 'normal', rule: 'goals', limit: 5, playerLimit: 2, ranked: true };
     room.endsAt = 0;
+    room.disconnectedRole = null;
+    room.disconnectTimer = null;
     rooms.set(code, room);
 
     [hostPlayer, guestPlayer].forEach((player) => {
@@ -264,6 +281,18 @@ socketServer.on('connection', (socket) => {
         if (queueIndex !== -1) rankedQueue.splice(queueIndex, 1);
         const session = sessions.get(socket);
         if (!session) return;
+        if (session.room.ranked && session.room.started && !session.room.ended) {
+            session.room.delete(socket);
+            sessions.delete(socket);
+            if (session.room.size === 0) {
+                if (session.room.disconnectTimer) clearTimeout(session.room.disconnectTimer);
+                rooms.delete(session.code);
+                return;
+            }
+            startRankedDisconnectTimer(session.room, session.role);
+            broadcast(session.room, { type: 'ranked-opponent-disconnected', graceSeconds: RANKED_DISCONNECT_GRACE_MS / 1000 });
+            return;
+        }
         session.room.delete(socket);
         sessions.delete(socket);
         session.room.playerNames[session.role] = null;
