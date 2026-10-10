@@ -711,6 +711,10 @@ function handleOnlineMatchEnd(message) {
         localStorage.setItem('rankedWins', getRankedWins() + 1);
         scheduleLeaderboardSync();
         if (leaderboardMetric === 'ranked') loadLeaderboard();
+        if (new Date().getMonth() === 9) {
+            addCrate('halloween');
+            showMissionToast('HALLOWEEN DROP EARNED!');
+        }
     }
 
     if (didWin && !onlineWinnerRewarded) {
@@ -1829,6 +1833,14 @@ const ALL_ITEMS = [
     { id: 'rubber_duck_purple', name: '🦆 Rubber Duck: Exotic', type: 'hat', isDropItem: true, rarity: 'exotic' },
     { id: 'crown_purple', name: '👑 Crown: Exotic', type: 'hat', isDropItem: true, rarity: 'exotic' },
     { id: 'blackIceDecal', name: 'Black Ice: Exotic', type: 'decal', isDropItem: true, rarity: 'exotic' },
+    { id: 'witch', name: '🪄 Witch Hat', type: 'hat', isDropItem: true, rarity: 'halloween' },
+    { id: 'pumpkin', name: '🎃 Pumpkin Hat', type: 'hat', isDropItem: true, rarity: 'halloween' },
+    { id: 'cauldron', name: 'Cauldron', type: 'hat', isDropItem: true, rarity: 'halloween' },
+    { id: 'bloodst', name: 'Blood', type: 'boost', isDropItem: true, rarity: 'halloween' },
+    { id: 'ghostDecal', name: 'Ghost', type: 'decal', isDropItem: true, rarity: 'halloween' },
+    { id: 'leaves', name: 'Leaves', type: 'boost', isDropItem: true, rarity: 'halloween' },
+    { id: 'exp_bat', name: 'Bats', type: 'explosion', isDropItem: true, rarity: 'halloween' },
+    { id: 'exp_corn', name: 'Candy Corn', type: 'explosion', isDropItem: true, rarity: 'halloween' },
 
     // DECALS
     { id: 'woodDecal', name: 'Wood', type: 'decal', lvl: 3 },
@@ -2408,7 +2420,205 @@ function createHat(type) {
         star.position.set(0, 2.4, 0.5); 
         hatGroup.add(star);
     }
+    if (type === 'witch') {
+        // === 1. The Wide Brim ===
+        const brimGeo = new THREE.CylinderGeometry(1.8, 2.2, 0.1, 24);
+        const wizardMat = new THREE.MeshStandardMaterial({ 
+            color: 0x000000,
+            metalness: 0.7,
+            roughness: 0.3,
+            transparent: true // Useful if your image has a transparent background
+        });
+        const brim = new THREE.Mesh(brimGeo, wizardMat);
+        brim.position.y = 0.05;
+        brim.scale.set(1.2, 1.0, 1.3); // Elongated front-to-back to fit the car better
+        hatGroup.add(brim);
+    
+        // === 2. The Tilted Magic Cone (FLIPPED TILT) ===
+        const coneGeo = new THREE.ConeGeometry(1.0, 2.5, 16);
+        const cone = new THREE.Mesh(coneGeo, wizardMat);
+        
+        // Positioned slightly forward and tilted forward instead of backward
+        cone.position.set(0, 1.2, 0.2); 
+        cone.rotation.x = Math.PI / 16; // Changed from negative to positive
+        hatGroup.add(cone);
+    
+        // === 3. The Hat Band (FLIPPED TILT) ===
+        const bandGeo = new THREE.CylinderGeometry(0.85, 0.95, 0.2, 16, 1, true);
+        const bandMat = new THREE.MeshStandardMaterial({ color: 0xb100cd, metalness: 0.7, roughness: 0.3 });
+        const band = new THREE.Mesh(bandGeo, bandMat);
+        band.position.set(0, 0.25, 0.05);
+        band.rotation.x = Math.PI / 16; // Match the new forward tilt
+        band.scale.set(1.05, 1.0, 1.1);
+        hatGroup.add(band);
+    
+        // === 4. The Glowing Star Charm (REPOSITIONED FOR NEW TILT) ===
+        const starGeo = new THREE.IcosahedronGeometry(0.2, 0); 
+        const starMat = new THREE.MeshStandardMaterial({ 
+            color: 0xb100cd,       
+            emissive: 0xb100cd,    
+            roughness: 0.1 
+        });
+        const star = new THREE.Mesh(starGeo, starMat);
+        
+        // Moved forward to hang off the new tip position
+        star.position.set(0, 2.4, 0.5); 
+        hatGroup.add(star);
+    }
+    if (type === 'cauldron') {
+        // --- MATERIALS ---
+        const bellyGeo = new THREE.SphereGeometry(1.2, 16, 16, 0, Math.PI * 2, 0.9, Math.PI / 2);
 
+        const ironMat = new THREE.MeshStandardMaterial({ 
+            color: 0x1a1a1a, 
+            roughness: 0.7, 
+            metalness: 0.8,
+            side: THREE.DoubleSide // Important: allows you to see inside the pot
+        });
+    
+        const potionMat = new THREE.MeshStandardMaterial({ 
+            color: 0x39ff14, 
+            emissive: 0x1f990a, 
+            emissiveIntensity: 2, 
+            roughness: 0.2, 
+            metalness: 0.1 
+        });
+    
+        // === 1. The Main Cauldron Body ===
+        const belly = new THREE.Mesh(bellyGeo, ironMat);
+        belly.position.y = 0.8;
+        belly.scale.set(1.2, 0.8, 1.2);
+        hatGroup.add(belly);
+    
+        // === 2. The Rim / Lip ===
+        const rim = new THREE.Mesh(
+            new THREE.TorusGeometry(1.1, 0.15, 8, 24),
+            ironMat
+        );
+        rim.position.y = 1.3;
+        rim.rotation.x = Math.PI / 2;
+        hatGroup.add(rim);
+    
+        // === 3. The Potion Liquid Surface ===
+        const potionSurface = new THREE.Mesh(
+            new THREE.CylinderGeometry(1.0, 1.0, 0.05, 16),
+            potionMat
+        );
+        potionSurface.position.y = 1.25; // Sitting just inside the rim
+        hatGroup.add(potionSurface);
+    
+        // === 4. Bubbles (Green Potion Bubbles) ===
+        const bubbleGeo = new THREE.SphereGeometry(0.15, 8, 8);
+        const numBubbles = 7;
+    
+        for (let i = 0; i < numBubbles; i++) {
+            const bubble = new THREE.Mesh(bubbleGeo, potionMat);
+            
+            // Randomize placement across the liquid surface
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.random() * 0.7;
+            
+            // Vary the height slightly so some pop out higher
+            const yOffset = 1.28 + Math.random() * 0.12;
+            const scale = 0.5 + Math.random() * 0.8;
+    
+            bubble.position.set(
+                Math.cos(angle) * radius,
+                yOffset,
+                Math.sin(angle) * radius
+            );
+            bubble.scale.set(scale, scale, scale);
+            hatGroup.add(bubble);
+        }
+    
+        // === 5. Side Handles ===
+        const handleGeo = new THREE.TorusGeometry(0.25, 0.05, 8, 16);
+        
+        // Left Handle
+        const leftHandle = new THREE.Mesh(handleGeo, ironMat);
+        leftHandle.position.set(-1.3, 0.9, 0);
+        hatGroup.add(leftHandle);
+    
+        // Right Handle
+        const rightHandle = new THREE.Mesh(handleGeo, ironMat);
+        rightHandle.position.set(1.3, 0.9, 0);
+        hatGroup.add(rightHandle);
+    }
+    if (type === 'pumpkin') {
+        // --- MATERIALS ---
+        const pumpkinMat = new THREE.MeshStandardMaterial({
+            color: 0xEB8B0C,
+            roughness: 0.7,
+            metalness: 0.1,
+            flatShading: true
+        });
+    
+        const glowMat = new THREE.MeshBasicMaterial({
+            color: 0xFFD700, // Bright glowing yellow/orange
+            side: THREE.DoubleSide
+        });
+    
+        const stemMat = new THREE.MeshStandardMaterial({
+            color: 0x228B22,
+            roughness: 0.9
+        });
+    
+        // === 1. Main Pumpkin Body ===
+        const body = new THREE.Mesh(
+            new THREE.SphereGeometry(1.2, 16, 12),
+            pumpkinMat
+        );
+        body.position.y = 0.9;
+        body.scale.set(1.1, 0.9, 1.1);
+        hatGroup.add(body);
+    
+        // === 2. Stem (Moved higher to sit on top) ===
+        const stem = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.15, 0.5, 8),
+            stemMat
+        );
+        stem.position.set(0, 2, 0); // Moved up above top edge
+        stem.rotation.z = -0.2;       // Tilted for character
+        hatGroup.add(stem);
+    
+        // === 3. Glowing Eyes (Triangles) ===
+        const eyeGeo = new THREE.ConeGeometry(0.2, 0.3, 3); // 3 sides = triangle
+        
+        // Left Eye
+        const eyeL = new THREE.Mesh(eyeGeo, glowMat);
+        eyeL.position.set(-0.4, 1.1, 1.15);
+        eyeL.rotation.set(0.2, -0.3, -0.3);
+        hatGroup.add(eyeL);
+    
+        // Right Eye
+        const eyeR = new THREE.Mesh(eyeGeo, glowMat);
+        eyeR.position.set(0.4, 1.1, 1.15);
+        eyeR.rotation.set(0.2, 0.3, 0.3);
+        hatGroup.add(eyeR);
+    
+        // === 4. Glowing Nose ===
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.2, 3), glowMat);
+        nose.position.set(0, 0.85, 1.22);
+        nose.rotation.x = 0.2;
+        hatGroup.add(nose);
+    
+        // === 5. Jagged Mouth ===
+        const mouthGroup = new THREE.Group();
+        const toothGeo = new THREE.BoxGeometry(0.12, 0.12, 0.05);
+    
+        // Arc of 5 teeth/blocks to form a smile
+        for (let i = 0; i < 5; i++) {
+            const tooth = new THREE.Mesh(toothGeo, glowMat);
+            const offset = (i - 2) * 0.18;
+            const yOffset = -Math.pow(offset, 2) * 1.5; // Curves upward into a smile
+            tooth.position.set(offset, yOffset, 0);
+            mouthGroup.add(tooth);
+        }
+    
+        mouthGroup.position.set(0, 0.6, 1.2);
+        mouthGroup.rotation.x = -0.1;
+        hatGroup.add(mouthGroup);
+    }
     if (type === 'viking') {
         // Main Helmet
         const helm = new THREE.Mesh(
@@ -3105,6 +3315,7 @@ function createDecal(type) {
     if (type === 'exoticDecal') textureUrl = 'https://codehs.com/uploads/f0986561cd789a58a0dcc9af6e81fb57';
     if (type === 'illusionDecal') textureUrl = 'https://codehs.com/uploads/721afcaf84a17491b1cece506af6011d';
     if (type === 'bubbleDecal') textureUrl = 'https://codehs.com/uploads/50563309d3498e9dd6f46254da767008';
+    if (type === 'ghostDecal') textureUrl = 'https://codehs.com/uploads/729c1aa5b46accba42e7d941ee64755e';
     
 
     if (textureUrl !== '') {
@@ -3173,7 +3384,9 @@ const boostTextures = {
     void_black: textureLoader.load('https://codehs.com/uploads/472aecbdbec7b0bb6a64e02d951e7f06'),
     ghost_white: textureLoader.load('https://codehs.com/uploads/0bab0704422e29307d576c4ee9588e35'),
     coins: textureLoader.load('https://codehs.com/uploads/56020e969c8c5bbaa9a8ac121edbbed2'),
-    real: textureLoader.load('https://codehs.com/uploads/651a46bd37c1dcbf720238b5ee406ef3')
+    real: textureLoader.load('https://codehs.com/uploads/651a46bd37c1dcbf720238b5ee406ef3'),
+    leaves: textureLoader.load('https://codehs.com/uploads/a2605a3b666467b9733622ede24582cd'),
+    bloodst: textureLoader.load('https://codehs.com/uploads/c66c39f01d8e55e2cf622985286fdb70')
 };
 function createBoostParticle(carPosition, isShowroom = false, targetScene = scene, boostType = currentBoostType, emissionVelocity = null) {
     // 1. Use a flat plane instead of a sphere
@@ -3262,6 +3475,8 @@ let currentExplosionType = localStorage.getItem('p1Explosion') || 'none';
 
 const explosionTextures = {
     exp_standard: textureLoader.load('https://codehs.com/uploads/617a04e46173edafe3ccc22a05bac0c9'),
+    exp_bat: textureLoader.load('https://codehs.com/uploads/f9f661297019b9e9593f6cd2d39fa77d'),
+    exp_corn: textureLoader.load('https://codehs.com/uploads/55c477476a315d2cb7d99ee57ae1be75'),
     exp_supernova: textureLoader.load('https://codehs.com/uploads/64341fcc9834bddf48797901e01dfab8'),
     exp_ghost: textureLoader.load('https://codehs.com/uploads/617a04e46173edafe3ccc22a05bac0c9')
 };
@@ -3282,9 +3497,9 @@ const WHEEL_SEGMENTS = [
     { label: '1500 XP', color: '#2f855a', weight: 14, prize: { kind: 'xp', amount: 1500 } },
     { label: 'Drop Item', color: '#b7791f', weight: 10, prize: { kind: 'item' } },
     { label: '2x Common', color: '#4a5560', weight: 12, prize: { kind: 'crate', crate: 'common', amount: 2 } },
-    { label: 'Rare Drop', color: '#3182ce', weight: 8, prize: { kind: 'crate', crate: 'rare', amount: 1 } },
+    { label: 'Rare Drop', color: '#3182ce', weight: 12, prize: { kind: 'crate', crate: 'rare', amount: 1 } },
     { label: '5000 XP', color: '#805ad5', weight: 3, prize: { kind: 'xp', amount: 5000 } },
-    { label: 'Exotic Drop', color: '#d23cff', weight: 1, prize: { kind: 'crate', crate: 'exotic', amount: 1 } }
+    { label: 'Exotic Drop', color: '#d23cff', weight: 2, prize: { kind: 'crate', crate: 'exotic', amount: 1 } }
 ];
 let wheelSpinning = false;
 let wheelAngle = 0;
@@ -3406,23 +3621,26 @@ function awardWheelPrize(seg) {
 })();
 
 // ---------------- LOOT DROPS ----------------
-const LOOT_RARITIES = ['common', 'uncommon', 'rare', 'legendary', 'exotic'];
+const LOOT_RARITIES = ['common', 'uncommon', 'rare', 'legendary', 'exotic', 'halloween'];
 const RARITY_COLORS = {
-    common: '#b0b8c0', uncommon: '#4cd964', rare: '#3fa7ff', legendary: '#ffb02e', exotic: '#d23cff'
+    common: '#b0b8c0', uncommon: '#4cd964', rare: '#3fa7ff', legendary: '#ffb02e', exotic: '#d23cff',
+    halloween: '#ff7518'
 };
 const CRATE_TYPES = {
     common: { label: 'Common Drop', color: '#b0b8c0', source: 'Daily quests' },
     rare: { label: 'Rare Drop', color: '#3fa7ff', source: 'Ranking up' },
-    exotic: { label: 'Exotic Drop', color: '#d23cff', source: 'Every 150 levels' }
+    exotic: { label: 'Exotic Drop', color: '#d23cff', source: 'Every 150 levels' },
+    halloween: { label: 'Halloween Drop', color: '#ff7518', source: 'Ranked wins in October', icon: '🎃' }
 };
 // Better drops shift the odds toward higher rarities
 const CRATE_ODDS = {
     common: { common: 75, uncommon: 23, rare: 1.8, legendary: 0.19, exotic: 0.01 },
-    rare: { common: 30, uncommon: 40, rare: 23, legendary: 6.5, exotic: 0.5 },
-    exotic: { common: 1, uncommon: 20, rare: 24, legendary: 35, exotic: 20 }
+    rare: { common: 10, uncommon: 30, rare: 40, legendary: 6.5, exotic: 6.5 },
+    exotic: { common: 1, uncommon: 2, rare: 3, legendary: 35, exotic: 40 },
+    halloween: { halloween: 100 }
 };
 const EXOTIC_DROP_LEVEL_INTERVAL = 150;
-const DUPLICATE_XP = { common: 100, uncommon: 250, rare: 600, legendary: 1500, exotic: 5000 };
+const DUPLICATE_XP = { common: 100, uncommon: 250, rare: 600, legendary: 1500, exotic: 5000, halloween: 5000 };
 let lootOpening = false;
 
 function getCrates() {
@@ -3451,7 +3669,7 @@ function isDropOwned(id) {
 function rollDrop(crateType) {
     const pool = ALL_ITEMS.filter(item => item.isDropItem);
     const odds = CRATE_ODDS[crateType];
-    const available = LOOT_RARITIES.filter(r => pool.some(item => item.rarity === r));
+    const available = LOOT_RARITIES.filter(r => odds[r] > 0 && pool.some(item => item.rarity === r));
     if (!available.length) return null;
 
     const total = available.reduce((sum, r) => sum + (odds[r] || 0), 0);
@@ -3479,7 +3697,7 @@ function renderLootUI() {
         btn.className = 'loot-crate-btn';
         btn.style.setProperty('--crate-color', info.color);
         btn.disabled = crates[type] === 0 || lootOpening;
-        btn.innerHTML = `<span class="loot-crate-icon">🎁</span>
+        btn.innerHTML = `<span class="loot-crate-icon">${info.icon || '🎁'}</span>
             <span class="loot-crate-name">${info.label}</span>
             <span class="loot-crate-count">x${crates[type]}</span>
             <span class="loot-crate-source">${info.source}</span>`;
@@ -3512,7 +3730,7 @@ function presentDrop(type, result) {
     overlay.style.setProperty('--rarity-color', color);
     overlay.innerHTML = `
         <div class="loot-rays"></div>
-        <div class="loot-crate">🎁</div>
+        <div class="loot-crate">${CRATE_TYPES[type].icon || '🎁'}</div>
         <div class="loot-flash"></div>
         <div class="loot-reveal">
             <div class="loot-rarity">${item.rarity.toUpperCase()}</div>
